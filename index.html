@@ -2275,18 +2275,34 @@ function layoutTree(root) {
   }
   assignX(root, root.x || LEFT_PAD+130);
 
-  // Sort children: guesses first, clades middle, target last
+  // Returns true if node's subtree contains the target leaf
+  function subtreeHasTarget(node) {
+    if (node.kind === 'target') return true;
+    return (node.children||[]).some(subtreeHasTarget);
+  }
+
+  // Sort children so target-bearing subtrees go to the TOP (lowest Y = least crowding
+  // with the guess fan below), direct guess leaves in the middle, non-target clades last.
+  // This prevents long guess beziers from sweeping through the target's branch.
   function sortKids(node) {
     if (!node.children) return;
-    node.children.sort(function(a,b){
-      var r={guess:0,clade:1,target:2};
-      return (r[a.kind]||1)-(r[b.kind]||1);
+    node.children.sort(function(a, b) {
+      function rank(n) {
+        if (n.kind === 'target') return 0;
+        if (n.kind === 'clade' && subtreeHasTarget(n)) return 1;
+        if (n.kind === 'clade') return 2;
+        return 3; // guess leaf
+      }
+      return rank(a) - rank(b);
     });
-    node.children.forEach(function(c){ if(c.kind==='clade') sortKids(c); });
+    node.children.forEach(function(c){ if (c.kind==='clade') sortKids(c); });
   }
   sortKids(root);
 
   // Y assignment — each leaf gets LEAF_H, expanded nodes inject IMG_SLOT_H
+  // Extra gap inserted between target-bearing group and guess group to prevent
+  // the target's dashed branch from overlapping the guess fan
+  var TARGET_GAP = Math.round(LEAF_H * 0.7); // extra vertical separation
   var leafN = {n:0};
   function yOffset() { return TOP_PAD + leafN.n * LEAF_H; }
 
@@ -2294,17 +2310,28 @@ function layoutTree(root) {
     if (node.kind === 'guess' || node.kind === 'target') {
       node.y = yOffset(); leafN.n++; return;
     }
-    // Process children first
-    node.children.forEach(assignY);
+
+    // Track whether we've finished the target group and need to add the gap
+    var sawTarget = false;
+    var gapAdded  = false;
+    node.children.forEach(function(c) {
+      var wasTarget = subtreeHasTarget(c) || c.kind === 'target';
+      if (sawTarget && !wasTarget && !gapAdded) {
+        // First non-target child after target group — inject gap
+        leafN.n += TARGET_GAP / LEAF_H;
+        gapAdded = true;
+      }
+      assignY(c);
+      if (wasTarget) sawTarget = true;
+    });
 
     // If expanded: reserve a slot for the image panel after children
     node.imgPanelY = null;
     if (node.kind === 'clade' && nodeExpanded[node.ott_id]) {
-      node.imgPanelY = yOffset() + 4;        // 4px gap from last child
+      node.imgPanelY = yOffset() + 4;
       leafN.n += Math.ceil(IMG_SLOT_H / LEAF_H);
     }
 
-    // Node Y = midpoint of all leaf Ys in subtree (+ imgPanelY if expanded)
     var ys = getYs(node);
     if (node.imgPanelY !== null) ys.push(node.imgPanelY + IMG_SLOT_H*0.5);
     node.y = ys.length ? (Math.min.apply(null,ys)+Math.max.apply(null,ys))/2 : TOP_PAD;
