@@ -1,0 +1,2326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phylo — Tree of Life Guessing Game</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Courier+Prime:ital@0;1&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:     #f9f4e8;
+  --bg2:    #f0e8d2;
+  --bg3:    #e4d9be;
+  --ink:    #1a1209;
+  --ink2:   #4a3a1a;
+  --ink3:   #7a6a4a;
+  --green:  #1a4a2e;
+  --green2: #2d6b47;
+  --green3: #4a9a6a;
+  --gold:   #8b6d2a;
+  --gold2:  #c4a35a;
+  --red:    #7a2a0a;
+  --red2:   #c4562a;
+  --border: #c8b88a;
+  --shadow: rgba(26,18,9,0.12);
+  --cream:  #fdf8ee;
+}
+
+body {
+  font-family: 'EB Garamond', Georgia, serif;
+  background: var(--bg);
+  color: var(--ink);
+  min-height: 100vh;
+  line-height: 1.6;
+}
+
+/* Grain overlay */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  pointer-events: none; z-index: 9999; opacity: 0.5;
+}
+
+h1,h2,h3 { font-family: 'Playfair Display', Georgia, serif; }
+.mono    { font-family: 'Courier Prime', monospace; }
+
+/* ---- Screen management ---- */
+.screen { display: none; min-height: 100vh; }
+.screen.active { display: flex; }
+
+/* =================== INTRO =================== */
+#screen-intro {
+  flex-direction: column; align-items: center; justify-content: center;
+  padding: 40px 20px; position: relative;
+}
+#screen-intro::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+  background: linear-gradient(90deg, var(--green) 0%, var(--gold2) 50%, var(--green) 100%);
+}
+
+.intro-emblem { width: 80px; height: 80px; margin-bottom: 20px; }
+.intro-title {
+  font-size: clamp(52px,10vw,96px); font-weight: 900; letter-spacing: -3px;
+  color: var(--green); line-height: 1; margin-bottom: 6px;
+}
+.intro-subtitle {
+  font-size: clamp(15px,2.2vw,19px); font-style: italic;
+  color: var(--ink3); margin-bottom: 40px; text-align: center;
+}
+.ornament { color: var(--gold2); font-size: 18px; letter-spacing: 10px; margin: 4px 0; }
+
+.mode-selection { display: flex; gap: 20px; margin-bottom: 36px; flex-wrap: wrap; justify-content: center; }
+.mode-card {
+  background: var(--cream); border: 2px solid var(--border); padding: 20px 28px;
+  cursor: pointer; transition: all .2s; max-width: 268px; text-align: left; position: relative;
+}
+.mode-card:hover { background: var(--bg2); }
+.mode-card.selected { border-color: var(--green); background: #e6efe9; }
+.mode-check {
+  position: absolute; top: 12px; right: 12px; width: 20px; height: 20px; border-radius: 50%;
+  border: 2px solid var(--border); display: flex; align-items: center; justify-content: center;
+  font-size: 11px; transition: all .2s; color: transparent;
+}
+.mode-card.selected .mode-check { background: var(--green); border-color: var(--green); color: white; }
+.mode-name { font-family: 'Playfair Display',serif; font-size: 19px; font-weight: 700; color: var(--green); margin-bottom: 7px; }
+.mode-desc { font-size: 13.5px; color: var(--ink2); line-height: 1.5; }
+
+.start-btn {
+  background: var(--green); color: var(--bg); border: none; padding: 14px 44px;
+  font-family: 'Playfair Display',serif; font-size: 17px; font-weight: 700;
+  cursor: pointer; letter-spacing: 1px; transition: all .2s;
+}
+.start-btn:hover { background: var(--green2); transform: translateY(-1px); box-shadow: 0 4px 16px var(--shadow); }
+.start-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
+.powered-by { color: var(--ink3); font-size: 12px; font-style: italic; margin-top: 14px; }
+
+/* =================== LOADING =================== */
+#screen-loading { flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; }
+.loading-title { font-family: 'Playfair Display',serif; font-size: 26px; color: var(--green); margin-bottom: 40px; font-style: italic; }
+
+.walk-container { width: 100%; max-width: 560px; display: flex; flex-direction: column; }
+.walk-step {
+  display: flex; align-items: flex-start; opacity: 0; transform: translateY(8px);
+  transition: opacity .35s, transform .35s; padding: 7px 0; position: relative;
+}
+.walk-step.visible { opacity: 1; transform: translateY(0); }
+.walk-line {
+  position: absolute; left: 4px; top: 22px; bottom: 0; width: 2px; background: var(--border);
+}
+.walk-step:last-child .walk-line { display: none; }
+.walk-dot {
+  width: 10px; height: 10px; border-radius: 50%; background: var(--border);
+  margin-top: 4px; margin-right: 18px; flex-shrink: 0; position: relative; z-index: 1; transition: background .3s;
+}
+.walk-step.revealed .walk-dot { background: var(--green); }
+.walk-step.hidden-step .walk-dot { background: var(--ink3); }
+.walk-rank {
+  font-family: 'Courier Prime',monospace; font-size: 10px; text-transform: uppercase;
+  letter-spacing: 2px; color: var(--ink3); min-width: 72px; margin-right: 14px; line-height: 2.1;
+}
+.walk-name { font-family: 'Playfair Display',serif; font-size: 19px; color: var(--ink); font-style: italic; }
+.walk-step.hidden-step .walk-name { color: var(--ink3); font-style: normal; font-size: 14px; letter-spacing: 3px; }
+
+.loading-proceed { margin-top: 44px; text-align: center; display: none; }
+.loading-proceed p { font-style: italic; color: var(--ink2); margin-bottom: 14px; }
+
+/* =================== GAME SCREEN =================== */
+#screen-game { flex-direction: column; }
+.game-header {
+  background: var(--green); color: var(--bg); padding: 11px 22px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 100; flex-shrink: 0;
+}
+.game-logo { font-family: 'Playfair Display',serif; font-size: 22px; font-weight: 900; letter-spacing: -1px; }
+.game-mode-badge {
+  font-family: 'Courier Prime',monospace; font-size: 10px; text-transform: uppercase;
+  letter-spacing: 2px; background: rgba(255,255,255,.14); padding: 4px 11px; border-radius: 20px;
+}
+.game-guess-count { font-family: 'Courier Prime',monospace; font-size: 13px; color: rgba(249,244,232,.75); }
+
+.game-body { display: grid; grid-template-columns: 1fr 360px; flex: 1; min-height: calc(100vh - 48px); }
+@media (max-width: 860px) { .game-body { grid-template-columns: 1fr; grid-template-rows: 380px auto; } }
+
+/* Tree */
+.tree-area { padding: 20px; border-right: 1px solid var(--border); display: flex; flex-direction: column; background: var(--cream); }
+.tree-caption { font-size: 11px; font-style: italic; color: var(--ink3); text-align: center; margin-bottom: 12px; font-family: 'Courier Prime',monospace; letter-spacing: .5px; }
+#tree-svg { width: 100%; flex: 1; min-height: 280px; }
+
+/* Panel */
+.game-panel { padding: 22px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; }
+
+.section-label { font-family: 'Courier Prime',monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 2px; color: var(--ink3); margin-bottom: 9px; }
+
+.search-wrapper { position: relative; }
+.search-input {
+  width: 100%; padding: 9px 14px; font-family: 'EB Garamond',serif; font-size: 16px;
+  border: 2px solid var(--border); background: var(--cream); color: var(--ink);
+  outline: none; transition: border-color .2s;
+}
+.search-input:focus { border-color: var(--green); }
+.search-input:disabled { background: var(--bg3); color: var(--ink3); cursor: wait; }
+
+.search-dropdown {
+  position: absolute; top: 100%; left: 0; right: 0; background: white;
+  border: 2px solid var(--green); border-top: none; max-height: 230px; overflow-y: auto;
+  z-index: 200; display: none; box-shadow: 0 4px 16px var(--shadow);
+}
+.search-dropdown.open { display: block; }
+.dropdown-item {
+  padding: 9px 14px; cursor: pointer; font-size: 13px; font-family: 'Courier Prime',monospace;
+  border-bottom: 1px solid var(--bg2); transition: background .1s;
+}
+.dropdown-item:hover, .dropdown-item.hi { background: var(--bg2); }
+.dropdown-item .di-name { color: var(--ink); }
+.dropdown-item .di-id { color: var(--ink3); font-size: 10px; }
+
+.search-status { font-size: 12px; color: var(--ink3); font-style: italic; margin-top: 5px; min-height: 18px; }
+
+/* Clue box */
+.clue-box {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-left: 4px solid var(--green); padding: 14px;
+}
+.clue-empty { font-style: italic; color: var(--ink3); font-size: 14px; }
+.clue-species { font-family: 'Courier Prime',monospace; font-style: italic; color: var(--ink2); font-size: 14px; }
+.clue-rank { font-family: 'Courier Prime',monospace; font-size: 9px; text-transform: uppercase; letter-spacing: 2px; color: var(--ink3); }
+.clue-node { font-family: 'Playfair Display',serif; font-size: 22px; font-weight: 700; color: var(--green); line-height: 1.2; }
+.clue-note { font-size: 11px; color: var(--ink3); font-style: italic; margin-top: 4px; }
+
+/* History */
+.history-list { display: flex; flex-direction: column; gap: 7px; }
+.hist-item {
+  display: flex; align-items: flex-start; gap: 10px; padding: 9px 11px;
+  background: var(--bg2); border: 1px solid var(--border); font-size: 13px;
+  animation: slideIn .3s ease;
+}
+@keyframes slideIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
+.hist-num { font-family: 'Courier Prime',monospace; font-size: 10px; color: var(--ink3); width: 18px; flex-shrink: 0; padding-top: 1px; }
+.hist-info { flex: 1; }
+.hist-species { font-family: 'Courier Prime',monospace; font-style: italic; color: var(--ink2); margin-bottom: 1px; font-size: 12px; }
+.hist-clade { color: var(--ink3); font-size: 11px; }
+.hist-clade strong { color: var(--green2); font-style: italic; font-family: 'EB Garamond',serif; font-size: 13px; }
+.hist-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+
+.btn-give-up {
+  padding: 9px 18px; background: transparent; border: 1.5px solid var(--border);
+  color: var(--ink3); font-family: 'EB Garamond',serif; font-size: 15px; cursor: pointer; transition: all .2s;
+}
+.btn-give-up:hover { border-color: var(--red2); color: var(--red2); }
+
+/* =================== WIN SCREEN =================== */
+#screen-win { flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; }
+.win-icon { font-size: 56px; margin-bottom: 20px; }
+.win-title { font-size: clamp(36px,6vw,56px); font-weight: 900; color: var(--green); margin-bottom: 6px; }
+.win-subtitle { font-style: italic; color: var(--ink3); font-size: 17px; margin-bottom: 28px; }
+.win-species-box { background: var(--green); color: var(--bg); padding: 20px 44px; text-align: center; margin-bottom: 28px; }
+.win-species-name { font-family: 'Courier Prime',monospace; font-style: italic; font-size: 26px; }
+.win-species-ott { font-size: 12px; opacity: .6; margin-top: 3px; }
+.win-lineage { display: flex; flex-direction: column; gap: 2px; max-width: 380px; width: 100%; margin-bottom: 28px; }
+.win-lin-item { display: flex; gap: 14px; font-size: 14px; padding: 5px 10px; }
+.win-lin-rank { font-family: 'Courier Prime',monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--ink3); min-width: 72px; padding-top: 2px; }
+.win-lin-name { font-style: italic; color: var(--ink); }
+.win-lin-item.target { background: var(--bg2); }
+.win-lin-item.target .win-lin-name { font-weight: 600; color: var(--green); }
+.win-stats { font-size: 17px; color: var(--ink2); margin-bottom: 28px; text-align: center; }
+.win-stats span { font-family: 'Playfair Display',serif; font-size: 30px; font-weight: 700; color: var(--green); }
+.btn-play-again {
+  background: var(--green); color: var(--bg); border: none; padding: 13px 38px;
+  font-family: 'Playfair Display',serif; font-size: 17px; font-weight: 700;
+  cursor: pointer; letter-spacing: 1px; transition: all .2s;
+}
+.btn-play-again:hover { background: var(--green2); transform: translateY(-1px); }
+
+/* =================== TARGET SELECTION =================== */
+#screen-target { flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; }
+.target-title { font-family: 'Playfair Display',serif; font-size: 28px; font-weight: 700; color: var(--green); margin-bottom: 6px; }
+.target-sub { font-style: italic; color: var(--ink3); font-size: 15px; margin-bottom: 28px; text-align: center; }
+.target-search-box { width: 100%; max-width: 480px; }
+.target-selected {
+  display: none; background: var(--green); color: var(--bg);
+  padding: 14px 20px; margin-top: 18px; max-width: 480px; width: 100%;
+}
+.target-selected-label { font-family: 'Courier Prime',monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 2px; opacity: .7; margin-bottom: 4px; }
+.target-selected-name { font-family: 'Playfair Display',serif; font-size: 22px; font-style: italic; }
+.target-selected-sub { font-size: 12px; opacity: .6; margin-top: 2px; font-family: 'Courier Prime',monospace; }
+.target-actions { display: flex; gap: 12px; margin-top: 22px; flex-wrap: wrap; justify-content: center; }
+.btn-secondary {
+  padding: 10px 24px; background: transparent; border: 1.5px solid var(--border);
+  color: var(--ink2); font-family: 'EB Garamond',serif; font-size: 15px; cursor: pointer; transition: all .2s;
+}
+.btn-secondary:hover { border-color: var(--ink2); }
+
+/* target selection choice cards on intro */
+.target-mode-row { display: flex; gap: 14px; margin-bottom: 28px; flex-wrap: wrap; justify-content: center; }
+.target-card {
+  background: var(--cream); border: 2px solid var(--border); padding: 14px 22px;
+  cursor: pointer; transition: all .2s; flex: 1; min-width: 180px; max-width: 240px;
+  text-align: center; position: relative;
+}
+.target-card:hover { background: var(--bg2); }
+.target-card.selected { border-color: var(--gold); background: #fdf5e0; }
+.target-card-icon { font-size: 22px; margin-bottom: 6px; }
+.target-card-name { font-family: 'Playfair Display',serif; font-size: 15px; font-weight: 700; color: var(--ink); margin-bottom: 3px; }
+.target-card-desc { font-size: 12px; color: var(--ink3); line-height: 1.4; }
+.divider { width: 100%; max-width: 560px; border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+/* Tree zoom controls */
+.tree-wrap { position: relative; flex: 1; min-height: 280px; overflow: hidden; }
+#tree-svg { width: 100%; height: 100%; position: absolute; inset: 0; cursor: grab; user-select: none; }
+#tree-svg:active { cursor: grabbing; }
+.tree-zoom-ctrls {
+  position: absolute; bottom: 10px; right: 10px;
+  display: flex; flex-direction: column; gap: 3px; z-index: 10;
+}
+.tree-zoom-btn {
+  width: 28px; height: 28px; background: var(--cream); border: 1.5px solid var(--border);
+  color: var(--ink2); font-size: 15px; cursor: pointer; display: flex; align-items: center;
+  justify-content: center; transition: all .15s; line-height: 1;
+}
+.tree-zoom-btn:hover { background: var(--bg2); border-color: var(--green); color: var(--green); }
+
+/* Root node search on intro */
+#root-section { width: 100%; max-width: 560px; margin-top: 14px; padding: 14px 18px; background: var(--bg2); border: 1px solid var(--border); border-left: 3px solid var(--gold2); }
+.root-quick-picks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.root-quick-btn { padding: 4px 11px; background: var(--cream); border: 1px solid var(--border); font-family: 'Courier Prime',monospace; font-size: 11px; color: var(--ink2); cursor: pointer; transition: all .15s; }
+.root-quick-btn:hover, .root-quick-btn.active { border-color: var(--gold); background: #fdf5e0; color: var(--gold); }
+.root-selected-badge { margin-top: 8px; font-family: 'Courier Prime',monospace; font-size: 11px; color: var(--green2); display: none; }
+/* Toggle switches */
+.toggle-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 0; border-bottom:1px solid var(--border); }
+.toggle-row:last-child { border-bottom:none; }
+.toggle-label { font-size:14px; color:var(--ink2); line-height:1.4; }
+.toggle-label small { display:block; font-size:11px; color:var(--ink3); margin-top:1px; }
+.toggle-switch { position:relative; width:38px; height:22px; flex-shrink:0; cursor:pointer; }
+.toggle-switch input { opacity:0; width:0; height:0; position:absolute; }
+.toggle-track {
+  position:absolute; inset:0; border-radius:11px; background:var(--border);
+  cursor:pointer; transition:background .2s;
+}
+.toggle-switch input:checked + .toggle-track { background:var(--green); }
+.toggle-thumb {
+  position:absolute; top:3px; left:3px; width:16px; height:16px;
+  border-radius:50%; background:white; transition:transform .2s; pointer-events:none;
+}
+.toggle-switch input:checked ~ .toggle-thumb { transform:translateX(16px); }
+.options-group { width:100%; max-width:560px; margin-top:14px; padding:10px 18px; background:var(--bg2); border:1px solid var(--border); border-left:3px solid var(--green2); }
+/* Hint */
+.hint-box {
+  background: #fdf5e0; border: 1px solid var(--gold2);
+  border-left: 4px solid var(--gold); padding: 12px 14px;
+}
+.hint-item { display:flex; align-items:baseline; gap:10px; padding:4px 0; }
+.hint-num  { font-family:'Courier Prime',monospace; font-size:9px; color:var(--gold); min-width:16px; }
+.hint-rank { font-family:'Courier Prime',monospace; font-size:8px; text-transform:uppercase; letter-spacing:1px; color:var(--ink3); min-width:60px; }
+.hint-name { font-family:'EB Garamond',serif; font-style:italic; font-size:15px; color:var(--ink); }
+.btn-hint {
+  padding:8px 16px; background:transparent; border:1.5px solid var(--gold2);
+  color:var(--gold); font-family:'EB Garamond',serif; font-size:14px;
+  cursor:pointer; transition:all .2s; display:flex; align-items:center; gap:6px;
+}
+.btn-hint:hover  { background:#fdf5e0; border-color:var(--gold); }
+.btn-hint:disabled { opacity:.35; cursor:not-allowed; }
+.btn-hint-exhausted { opacity:.5; cursor:not-allowed; font-size:12px; }
+</style>
+</head>
+<body>
+
+<!-- =================== INTRO =================== -->
+<div id="screen-intro" class="screen active">
+  <svg class="intro-emblem" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+    <line x1="40" y1="72" x2="40" y2="42" stroke="#1a4a2e" stroke-width="2.5"/>
+    <line x1="40" y1="52" x2="18" y2="30" stroke="#1a4a2e" stroke-width="2"/>
+    <line x1="40" y1="46" x2="62" y2="24" stroke="#1a4a2e" stroke-width="2"/>
+    <line x1="18" y1="30" x2="8"  y2="16" stroke="#1a4a2e" stroke-width="1.5"/>
+    <line x1="18" y1="30" x2="28" y2="14" stroke="#1a4a2e" stroke-width="1.5"/>
+    <line x1="62" y1="24" x2="52" y2="10" stroke="#1a4a2e" stroke-width="1.5"/>
+    <line x1="62" y1="24" x2="72" y2="12" stroke="#1a4a2e" stroke-width="1.5"/>
+    <circle cx="40" cy="72" r="3.5" fill="#1a4a2e"/>
+    <circle cx="40" cy="52" r="3" fill="#1a4a2e"/>
+    <circle cx="40" cy="46" r="3" fill="#1a4a2e"/>
+    <circle cx="18" cy="30" r="3" fill="#2d6b47"/>
+    <circle cx="62" cy="24" r="3" fill="#2d6b47"/>
+    <circle cx="8"  cy="16" r="3.5" fill="#4a9a6a"/>
+    <circle cx="28" cy="14" r="3.5" fill="#4a9a6a"/>
+    <circle cx="52" cy="10" r="3.5" fill="#4a9a6a"/>
+    <circle cx="72" cy="12" r="3.5" fill="#4a9a6a"/>
+  </svg>
+
+  <h1 class="intro-title">PHYLO</h1>
+  <p class="intro-subtitle">Navigate the Tree of Life to identify the hidden species</p>
+  <div class="ornament">✦ ✦ ✦</div><br>
+
+  <div style="font-family:'Courier Prime',monospace;font-size:10px;text-transform:uppercase;letter-spacing:2px;color:var(--ink3);margin-bottom:10px;">Target Species</div>
+  <div class="target-mode-row">
+    <div class="target-card selected" id="tcard-random" onclick="selectTargetMode('random')">
+      <div class="target-card-icon">🎲</div>
+      <div class="target-card-name">Random</div>
+      <div class="target-card-desc">Walk the tree of life to pick a random species</div>
+    </div>
+    <div class="target-card" id="tcard-custom" onclick="selectTargetMode('custom')">
+      <div class="target-card-icon">🔍</div>
+      <div class="target-card-name">Choose</div>
+      <div class="target-card-desc">Pick your own target for someone else to guess</div>
+    </div>
+  </div>
+
+  <!-- Root node selector — shown only in Random mode -->
+  <div id="root-section">
+    <div class="section-label" style="margin-bottom:7px;">Starting clade</div>
+    <div class="search-wrapper">
+      <input type="text" id="rn-input" class="search-input"
+        style="font-size:14px;padding:7px 12px;"
+        placeholder="Default: Metazoa (all animals)…"
+        autocomplete="off" oninput="onRootInput(this.value)" onkeydown="onRootKey(event)">
+      <div class="search-dropdown" id="rn-drop"></div>
+    </div>
+    <div class="root-quick-picks">
+      <button class="root-quick-btn active" id="rqb-metazoa"  onclick="setQuickRoot(691846,'Metazoa','rqb-metazoa')">🐾 Metazoa</button>
+      <button class="root-quick-btn" id="rqb-mammalia" onclick="setQuickRoot(244265,'Mammalia','rqb-mammalia')">🐘 Mammalia</button>
+      <button class="root-quick-btn" id="rqb-aves"     onclick="setQuickRoot(81461,'Aves','rqb-aves')">🐦 Aves</button>
+      <button class="root-quick-btn" id="rqb-insecta"  onclick="setQuickRoot(1062253,'Insecta','rqb-insecta')">🪲 Insecta</button>
+      <button class="root-quick-btn" id="rqb-fungi"    onclick="setQuickRoot(352914,'Fungi','rqb-fungi')">🍄 Fungi</button>
+      <button class="root-quick-btn" id="rqb-plantae"  onclick="setQuickRoot(361838,'Archaeplastida','rqb-plantae')">🌿 Plantae</button>
+    </div>
+    <div class="root-selected-badge" id="rn-badge"></div>
+  </div>
+
+  <hr class="divider">
+  <div style="font-family:'Courier Prime',monospace;font-size:10px;text-transform:uppercase;letter-spacing:2px;color:var(--ink3);margin-bottom:10px;">Clue Mode</div>
+
+  <div class="mode-selection">
+    <div class="mode-card selected" id="card-min" onclick="selectMode('min_clade')">
+      <div class="mode-check" id="chk-min">✓</div>
+      <div class="mode-name">Min Clade</div>
+      <div class="mode-desc">After each guess you learn the <em>smallest named clade</em> containing both your guess and the target, with common names. Uses <strong>OneZoom</strong> tree of life.</div>
+    </div>
+    <div class="mode-card" id="card-mrca" onclick="selectMode('mrca')">
+      <div class="mode-check" id="chk-mrca"></div>
+      <div class="mode-name">MRCA</div>
+      <div class="mode-desc">After each guess you learn the <em>most recent common ancestor</em> of your guess and the target in the synthetic evolutionary tree — may reveal unnamed phylogenetic clades.</div>
+    </div>
+  </div>
+
+  <div class="options-group">
+    <div class="section-label" style="margin-bottom:8px;">Options</div>
+    <div class="toggle-row">
+      <span class="toggle-label">
+        Extant species only
+        <small>Exclude extinct taxa from the random walk and reject extinct guesses</small>
+      </span>
+      <label class="toggle-switch">
+        <input type="checkbox" id="tog-extant" checked onchange="optExtant=this.checked">
+        <div class="toggle-track"></div>
+        <div class="toggle-thumb"></div>
+      </label>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">
+        Species-only guesses
+        <small>Only accept guesses at species rank — not genera, families, etc.</small>
+      </span>
+      <label class="toggle-switch">
+        <input type="checkbox" id="tog-species" onchange="optSpeciesOnly=this.checked">
+        <div class="toggle-track"></div>
+        <div class="toggle-thumb"></div>
+      </label>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+    <label style="font-family:'Courier Prime',monospace;font-size:10px;text-transform:uppercase;letter-spacing:2px;color:var(--ink3);display:flex;align-items:center;gap:7px;cursor:pointer;">
+      <input type="checkbox" id="tog-debug" onchange="optDebug=this.checked;updateDebugPanel()">
+      🐛 Debug mode (show target)
+    </label>
+  </div>
+  <button class="start-btn" id="start-btn" onclick="startGame()">Begin the Search</button>
+  <p class="powered-by">Powered by the Open Tree of Life API</p>
+</div>
+
+<!-- =================== LOADING =================== -->
+<div id="screen-loading" class="screen">
+  <p class="loading-title">Descending the Tree of Life…</p>
+  <p style="font-size:13px;color:var(--ink3);font-style:italic;margin-bottom:22px;text-align:center;">At each rank, a random child clade is chosen weighted by number of species it contains</p>
+  <div id="loading-status" style="font-family:'Courier Prime',monospace;font-size:11px;color:var(--ink3);min-height:18px;text-align:center;margin-bottom:16px;letter-spacing:.5px;transition:opacity .2s;"></div>
+  <div class="walk-container" id="walk-container"></div>
+  <div id="loading-error" style="display:none;background:#fce8e0;border:1.5px solid var(--red2);border-left:4px solid var(--red2);padding:14px 18px;margin-top:22px;max-width:520px;width:100%;font-size:13px;color:var(--red);line-height:1.7;white-space:pre-wrap;"></div>
+  <div class="loading-proceed" id="loading-proceed">
+    <p>A target species has been selected — its identity is hidden. Good luck.</p>
+    <button class="start-btn" onclick="proceedToGame()">Begin Guessing</button>
+  </div>
+</div>
+
+<!-- =================== CHOOSE TARGET =================== -->
+<div id="screen-target" class="screen">
+  <h2 class="target-title">Choose a Target Species</h2>
+  <p class="target-sub">Search for any species — the guesser won't see your choice until the end.</p>
+  <div class="target-search-box">
+    <div class="section-label">Search species</div>
+    <div class="search-wrapper">
+      <input type="text" id="ts-input" class="search-input" placeholder="Type a species name…"
+        autocomplete="off" oninput="onTargetInput(this.value)" onkeydown="onTargetKey(event)">
+      <div class="search-dropdown" id="ts-drop"></div>
+    </div>
+    <div class="search-status" id="ts-status"></div>
+  </div>
+  <div class="target-selected" id="target-selected-box">
+    <div class="target-selected-label">Target selected</div>
+    <div class="target-selected-name" id="ts-name"></div>
+    <div class="target-selected-sub" id="ts-ott"></div>
+  </div>
+  <div class="target-actions">
+    <button class="btn-secondary" onclick="showScreen('screen-intro')">← Back</button>
+    <button class="start-btn" id="ts-proceed-btn" disabled onclick="proceedFromCustomTarget()">Start Game →</button>
+  </div>
+</div>
+
+<!-- =================== GAME =================== -->
+<div id="screen-game" class="screen">
+  <header class="game-header">
+    <div class="game-logo">PHYLO</div>
+    <div class="game-mode-badge" id="hdr-mode">MIN CLADE</div>
+    <div class="game-guess-count" id="hdr-count">0 guesses</div>
+    <div id="debug-panel" style="display:none;font-family:'Courier Prime',monospace;font-size:11px;background:rgba(255,100,0,.18);padding:4px 12px;border-radius:3px;color:#ffe0c0;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">🐛 <span id="debug-text"></span></div>
+  </header>
+  <div class="game-body">
+    <div class="tree-area">
+      <div class="tree-caption" id="tree-caption">Guess a species to start mapping the tree</div>
+      <div class="tree-wrap">
+        <svg id="tree-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div class="tree-zoom-ctrls">
+          <button class="tree-zoom-btn" onclick="zoomTree(1.25)" title="Zoom in">+</button>
+          <button class="tree-zoom-btn" onclick="fitTree()" title="Fit to view">⊡</button>
+          <button class="tree-zoom-btn" onclick="zoomTree(0.8)" title="Zoom out">−</button>
+        </div>
+      </div>
+    </div>
+    <div class="game-panel">
+      <div>
+        <div class="section-label">Guess a species</div>
+        <div class="search-wrapper">
+          <input type="text" id="s-input" class="search-input" placeholder="Search any species name…"
+            autocomplete="off" oninput="onInput(this.value)" onkeydown="onKey(event)">
+          <div class="search-dropdown" id="s-drop"></div>
+        </div>
+        <div class="search-status" id="s-status"></div>
+      </div>
+
+      <div class="clue-box" id="clue-box">
+        <div class="section-label">Latest Clue</div>
+        <div class="clue-empty" id="clue-empty">Make your first guess to receive a clue.</div>
+        <div id="clue-main" style="display:none;"></div>
+      </div>
+
+      <div id="hint-section" style="display:none;">
+        <div class="section-label">Hints</div>
+        <div class="hint-box" id="hint-box"></div>
+      </div>
+
+      <div id="hist-section" style="display:none;">
+        <div class="section-label">Guess History</div>
+        <div class="history-list" id="hist-list"></div>
+      </div>
+
+      <div style="margin-top:auto; padding-top:12px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <button class="btn-hint" id="btn-hint" onclick="useHint()" style="display:none;">
+          💡 Hint <span id="hint-cost-label" style="font-size:11px;opacity:.7;"></span>
+        </button>
+        <button class="btn-give-up" onclick="giveUp()">Give Up &amp; Reveal</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =================== WIN =================== -->
+<div id="screen-win" class="screen">
+  <div class="win-icon" id="win-icon">🎉</div>
+  <h1 class="win-title" id="win-title">Correct!</h1>
+  <p class="win-subtitle" id="win-sub"></p>
+  <div class="win-species-box">
+    <div class="win-species-name" id="win-name"></div>
+    <div class="win-species-ott" id="win-ott"></div>
+  </div>
+  <div class="win-lineage" id="win-lineage"></div>
+  <p class="win-stats" id="win-stats"></p>
+  <button class="btn-play-again" onclick="playAgain()">Play Again</button>
+</div>
+
+<script>
+// ====================================================
+// OTL API
+// ====================================================
+const BASE = 'https://api.opentreeoflife.org/v3';
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Core POST wrapper with automatic retry and diagnostic error messages
+async function otl(path, body, _attempt) {
+  _attempt = _attempt || 0;
+  const url = BASE + path;
+  let response;
+
+  try {
+    response = await fetch(url, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(body)
+    });
+  } catch (netErr) {
+    // Network-level failure: CORS blocked, offline, DNS, etc.
+    if (_attempt < 2) {
+      await sleep(700 * (_attempt + 1));
+      return otl(path, body, _attempt + 1);
+    }
+    const raw = (netErr.message || '').toLowerCase();
+    let hint = '';
+    if (raw.includes('fetch') || raw.includes('network') || raw.includes('cors') || raw === '') {
+      hint = '\n\nPossible causes:\n' +
+        '  • No internet connection\n' +
+        '  • Open Tree of Life API is temporarily down\n' +
+        '  • File opened as file:// — browser may block cross-origin fetches.\n' +
+        '    Serve the file from a local web server instead:\n' +
+        '      npx serve .    OR    python3 -m http.server 8080';
+    }
+    throw new Error('Network error reaching ' + url + hint + '\n\nBrowser: ' + netErr.message);
+  }
+
+  if (!response.ok) {
+    let detail = '';
+    try { detail = await response.text(); } catch (_) {}
+    const preview = detail.slice(0, 300);
+    if (response.status === 400)
+      throw new Error('OTL bad request (400) for ' + path + '\nSent: ' + JSON.stringify(body) + '\nServer: ' + preview);
+    if (response.status === 404)
+      throw new Error('OTL endpoint not found (404): ' + path + '\nThe API may have changed.');
+    throw new Error('OTL HTTP ' + response.status + ' from ' + path + ': ' + preview);
+  }
+
+  try {
+    return await response.json();
+  } catch (jsonErr) {
+    throw new Error('OTL returned non-JSON from ' + path + ': ' + jsonErr.message);
+  }
+}
+
+// Quick connectivity probe — /taxonomy/about needs no parameters
+async function probeConnectivity() {
+  try {
+    const r = await fetch(BASE + '/taxonomy/about', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    });
+    return r.ok;
+  } catch (_) { return false; }
+}
+
+// Species search via match_names — fuzzy matching, well-documented response format.
+// Returns a flat array of {ott_id, name, unique_name, rank} objects.
+async function searchSpecies(q) {
+  const res = await otl('/tnrs/match_names', {
+    names: [q],
+    do_approximate_matching: true,
+    include_suppressed: false
+  });
+  const matches = (res.results && res.results[0] && res.results[0].matches) || [];
+  return matches
+    .filter(function(m) { return m.taxon && m.taxon.ott_id != null; })
+    .map(function(m) {
+      return {
+        ott_id:      m.taxon.ott_id,
+        name:        m.taxon.name,
+        unique_name: m.taxon.unique_name || m.taxon.name,
+        rank:        m.taxon.rank || ''
+      };
+    });
+}
+
+
+// ====================================================
+// ONEZOOM API — common names + min_clade MRCA
+// ====================================================
+const OZ_BASE = 'https://www.onezoom.org';
+var ozCache   = {};  // ott_id -> vernacular name | null
+var ozImgCache = {};  // ott_id -> img_id (integer) | null
+var nodeExpanded = {};  // ott_id -> bool (image bubble expanded)
+
+async function ozGet(path) {
+  var r = await fetch(OZ_BASE + path, { headers: { Accept: 'application/json' } });
+  if (!r.ok) throw new Error('OneZoom HTTP ' + r.status + ' ' + path);
+  return r.json();
+}
+
+// Minimum clade of two OTT IDs via OneZoom
+async function ozMRCA(ott1, ott2) {
+  return ozGet('/API/mrca.json?OTT1=' + ott1 + '&OTT2=' + ott2);
+}
+
+// Common name + image for one OTT ID — cached, never throws
+async function ozCommonName(ottId) {
+  var k = Number(ottId);
+  if (ozCache[k] !== undefined) return ozCache[k];
+  try {
+    var d = await ozGet('/API/node_details.json?OTT=' + k);
+    var v = (d.node && d.node.vernacular) ? d.node.vernacular : null;
+    ozCache[k] = v;
+    // Cache image id while we have the response
+    ozImgCache[k] = (d.node && d.node.img) ? Number(d.node.img) : null;
+    return v;
+  } catch(_) { ozCache[k] = null; ozImgCache[k] = null; return null; }
+}
+
+// Synchronous image URL for a node (null if not cached or no image)
+function ozImageUrl(ottId, size) {
+  var id = ozImgCache[Number(ottId)];
+  if (!id) return null;
+  return 'https://www.onezoom.org/static/FinalOutputs/pics/licensed/' + (size||128) + '/' + id + '.jpg';
+}
+
+// Up to maxN representative images for a clade node, sourced from cached lineage data
+function getRepImages(node, maxN) {
+  maxN = maxN || 4;
+  var imgs = [];
+  var seen = new Set();
+  function tryAdd(ottId, label) {
+    var url = ozImageUrl(ottId, 128);
+    if (url && !seen.has(url)) { imgs.push({ url:url, label:label||'' }); seen.add(url); }
+  }
+  // 1. The clade node itself
+  tryAdd(node.ott_id, node.name);
+  // 2. Descendants in targetFullLineage deeper than this node
+  var fi = node.fullIdx;
+  if (fi >= 0) {
+    for (var i = fi+1; i < targetFullLineage.length && imgs.length < maxN; i++) {
+      var n = targetFullLineage[i];
+      tryAdd(n.ott_id, n.name);
+    }
+  }
+  // 3. Guesses that attached here
+  guesses.forEach(function(g) {
+    if (imgs.length >= maxN) return;
+    if (Number(g.mrcaNode.ott_id) === node.ott_id) tryAdd(g.ott_id, g.species_name);
+  });
+  return imgs.slice(0, maxN);
+}
+
+// Enrich a taxon display string with its common name
+// Synchronous cache lookup (returns null if not cached yet)
+function ozCachedName(ottId) {
+  var k = Number(ottId);
+  return ozCache[k] !== undefined ? ozCache[k] : null;
+}
+
+// Pre-warm the ozCache for all nodes in targetFullLineage (called after buildTarget)
+async function warmOzCache() {
+  var toFetch = targetFullLineage.filter(function(n){
+    return n.ott_id != null && ozCache[Number(n.ott_id)] === undefined;
+  });
+  // Fire in parallel, swallow errors
+  await Promise.allSettled(toFetch.map(function(n){ return ozCommonName(n.ott_id); }));
+}
+
+function withCommon(scientificName, commonName) {
+  if (!commonName) return scientificName;
+  return scientificName + ' (' + commonName + ')';
+}
+
+// Taxon info: opts may include include_lineage:true / include_children:true
+// Always coerce ott_id to Number so we never send a string
+const taxonInfo = (id, opts) =>
+  otl('/taxonomy/taxon_info', Object.assign({ ott_id: Number(id) }, opts || {}));
+
+// Synthetic tree MRCA — coerce ids to Numbers
+const synMRCA = ids =>
+  otl('/tree_of_life/mrca', { ott_ids: ids.map(Number) });
+
+// ====================================================
+// STATE
+// ====================================================
+let mode = 'min_clade';
+let targetMode = 'random'; // 'random' | 'custom'
+let targetOttId = null;
+let targetTaxon = null;
+let targetFullLineage = []; // root-first, ALL nodes
+let targetMajorPath   = []; // root-first, major ranks only + species at end
+
+let bestMrcaFullIdx = -1;
+let guesses = [];
+let solved  = false;
+let hints   = [];  // array of revealed hint nodes {name, rank, fullIdx}
+
+let srResults = [];
+let srIndex   = -1;
+let srTimer   = null;
+
+const MAJOR_RANKS = new Set(['kingdom','phylum','class','order','family','genus','species','subkingdom','superclass','subphylum']);
+
+// Starting point — can be overridden by root node selection
+const START_OTT = 691846;
+var rootOttId   = START_OTT;
+var rootName    = 'Metazoa';
+var rootLineageOttIds = null; // Set of ott_ids in root's subtree lineage (for guess validation)
+var rnResults = [], rnIndex = -1, rnTimer = null;
+
+// Game options (toggled on intro screen)
+var optExtant      = true;   // exclude extinct taxa
+var optSpeciesOnly = false;  // require guesses to be species rank
+var optDebug       = false;  // show target in overlay
+
+// Tree pan/zoom state
+var treeZoom  = { x: 0, y: 0, scale: 1 };
+var treeDrag  = null;
+var treeContentSize = { w: 400, h: 300 };
+
+// ====================================================
+// UI HELPERS
+// ====================================================
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function esc(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function setStatus(msg) { document.getElementById('s-status').textContent = msg; }
+
+function updateDebugPanel() {
+  var panel = document.getElementById('debug-panel');
+  var txt   = document.getElementById('debug-text');
+  if (!panel || !txt) return;
+  panel.style.display = (optDebug && targetOttId) ? 'block' : 'none';
+  if (targetOttId && txt) {
+    var cn = ozCachedName(targetOttId);
+    txt.textContent = 'TARGET: ' + (targetTaxon ? targetTaxon.name : 'ott'+targetOttId)
+      + (cn ? ' ('+cn+')' : '') + ' [ott'+targetOttId+']';
+  }
+}
+
+function setLoadingStatus(msg) {
+  const el = document.getElementById('loading-status');
+  if (el) el.textContent = msg;
+}
+
+function showLoadingError(msg) {
+  const el = document.getElementById('loading-error');
+  if (!el) { alert(msg); return; }
+  // Clear previous content
+  el.innerHTML = '';
+  // Pre-formatted message
+  const pre = document.createElement('div');
+  pre.style.cssText = 'white-space:pre-wrap;margin-bottom:10px;';
+  pre.textContent = msg;
+  el.appendChild(pre);
+  // Try-again button
+  const btn = document.createElement('button');
+  btn.textContent = '← Back to Menu';
+  btn.style.cssText = 'padding:7px 20px;background:var(--red2);color:white;border:none;cursor:pointer;font-family:EB Garamond,serif;font-size:14px;margin-top:4px;';
+  btn.onclick = () => {
+    el.style.display = 'none';
+    showScreen('screen-intro');
+  };
+  el.appendChild(btn);
+  el.style.display = 'block';
+}
+
+
+// ====================================================
+// MODE SELECTION
+// ====================================================
+function selectTargetMode(t) {
+  targetMode = t;
+  document.getElementById('tcard-random').classList.toggle('selected', t === 'random');
+  document.getElementById('tcard-custom').classList.toggle('selected', t === 'custom');
+  document.getElementById('start-btn').textContent = t === 'custom' ? 'Choose Target →' : 'Begin the Search';
+  document.getElementById('root-section').style.display = t === 'random' ? 'block' : 'none';
+}
+
+// ====================================================
+// ROOT NODE SELECTION (random walk starting clade)
+// ====================================================
+function setQuickRoot(id, name, btnId) {
+  rootOttId = id; rootName = name;
+  document.querySelectorAll('.root-quick-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.getElementById(btnId).classList.add('active');
+  var badge = document.getElementById('rn-badge');
+  badge.style.display = 'none';
+  document.getElementById('rn-input').value = '';
+  document.getElementById('rn-drop').classList.remove('open');
+  document.getElementById('rn-drop').innerHTML = '';
+}
+
+function onRootInput(v) {
+  clearTimeout(rnTimer);
+  var drop = document.getElementById('rn-drop');
+  if (v.trim().length < 2) { drop.classList.remove('open'); drop.innerHTML = ''; return; }
+  rnTimer = setTimeout(async function() {
+    try {
+      var res = await otl('/tnrs/match_names', { names: [v.trim()], do_approximate_matching: true, include_suppressed: false });
+      var matches = (res.results && res.results[0] && res.results[0].matches) || [];
+      rnResults = matches
+        .filter(function(m) { return m.taxon && m.taxon.ott_id != null; })
+        .map(function(m) { return { ott_id: m.taxon.ott_id, name: m.taxon.name, unique_name: m.taxon.unique_name || m.taxon.name, rank: m.taxon.rank || '' }; })
+        .slice(0, 10);
+      renderRootDrop();
+    } catch (e) { console.error('[root search]', e); }
+  }, 350);
+}
+
+function renderRootDrop() {
+  var drop = document.getElementById('rn-drop'); drop.innerHTML = ''; rnIndex = -1;
+  if (!rnResults.length) { drop.classList.remove('open'); return; }
+  rnResults.forEach(function(r, i) {
+    var d = document.createElement('div'); d.className = 'dropdown-item';
+    var rankStr = r.rank ? ' <span style="color:var(--ink3);font-size:9px;text-transform:uppercase;letter-spacing:1px;">' + esc(r.rank) + '</span>' : '';
+    d.innerHTML = '<div class="di-name">' + esc(r.unique_name) + rankStr + '</div><div class="di-id">ott' + r.ott_id + '</div>';
+    d.addEventListener('click', function() { pickRoot(i); });
+    drop.appendChild(d);
+  });
+  drop.classList.add('open');
+}
+
+function onRootKey(e) {
+  var drop = document.getElementById('rn-drop');
+  var items = drop.querySelectorAll('.dropdown-item');
+  if (e.key === 'ArrowDown') { e.preventDefault(); rnIndex = Math.min(rnIndex+1, items.length-1); items.forEach(function(it,i){ it.classList.toggle('hi', i===rnIndex); }); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); rnIndex = Math.max(rnIndex-1, 0); items.forEach(function(it,i){ it.classList.toggle('hi', i===rnIndex); }); }
+  else if (e.key === 'Enter') { e.preventDefault(); if (rnIndex >= 0) pickRoot(rnIndex); else if (rnResults.length) pickRoot(0); }
+  else if (e.key === 'Escape') { drop.classList.remove('open'); }
+}
+
+function pickRoot(i) {
+  var r = rnResults[i]; if (!r) return;
+  document.getElementById('rn-drop').classList.remove('open');
+  document.getElementById('rn-input').value = '';
+  rootOttId = r.ott_id; rootName = r.unique_name || r.name;
+  document.querySelectorAll('.root-quick-btn').forEach(function(b) { b.classList.remove('active'); });
+  var badge = document.getElementById('rn-badge');
+  badge.textContent = '✓ Starting from: ' + rootName + ' (ott' + rootOttId + ')';
+  badge.style.display = 'block';
+}
+
+function selectMode(m) {
+  mode = m;
+  document.getElementById('card-min').classList.toggle('selected', m === 'min_clade');
+  document.getElementById('card-mrca').classList.toggle('selected', m === 'mrca');
+  document.getElementById('chk-min').textContent  = m === 'min_clade' ? '✓' : '';
+  document.getElementById('chk-mrca').textContent = m === 'mrca' ? '✓' : '';
+}
+
+// ====================================================
+// WEIGHTED RANDOM PICK
+// ====================================================
+function pickWeighted(items) {
+  // items must have a .tips (number) field
+  const total = items.reduce((s, it) => s + (it.tips || 1), 0);
+  let r = Math.random() * total;
+  for (const it of items) {
+    r -= (it.tips || 1);
+    if (r <= 0) return it;
+  }
+  return items[items.length - 1];
+}
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// ====================================================
+// ====================================================
+// GBIF-BASED TARGET SELECTION
+// Replaces the OTL random walk entirely.
+// GBIF guarantees: accepted status, full backbone taxonomy, extant species.
+// ====================================================
+const GBIF_BASE = 'https://api.gbif.org';
+
+// Human-readable label for an OTL rank string
+function rankLabel(rank) {
+  var KNOWN = {
+    'kingdom':'Kingdom','subkingdom':'Subkingdom','superphylum':'Superphylum',
+    'phylum':'Phylum','subphylum':'Subphylum','superclass':'Superclass',
+    'class':'Class','subclass':'Subclass','infraclass':'Infraclass',
+    'superorder':'Superorder','order':'Order','suborder':'Suborder',
+    'infraorder':'Infraorder','superfamily':'Superfamily',
+    'family':'Family','subfamily':'Subfamily','tribe':'Tribe',
+    'genus':'Genus','subgenus':'Subgenus','species':'Species',
+    'subspecies':'Subspecies','variety':'Variety',
+    'no rank':'Clade','no rank - terminal':'Clade'
+  };
+  var r = (rank||'').toLowerCase().trim();
+  return KNOWN[r] || (rank ? rank.charAt(0).toUpperCase()+rank.slice(1) : 'Clade');
+}
+
+async function gbifGet(path) {
+  var r = await fetch(GBIF_BASE + path, { headers: { Accept: 'application/json' } });
+  if (!r.ok) throw new Error('GBIF HTTP ' + r.status + ' ' + path);
+  return r.json();
+}
+
+// OTL names → GBIF canonical names for top-level clades
+var OTL_TO_GBIF_NAME = {
+  'Metazoa': 'Animalia', 'metazoa': 'Animalia',
+  'Archaeplastida': 'Plantae'
+};
+
+async function gbifSelectTarget(rootOttId, rootName) {
+  // ── Step 1: Look up the root clade in GBIF ───────────────────────────
+  setLoadingStatus('Looking up "' + rootName + '" in GBIF…');
+  var searchName = OTL_TO_GBIF_NAME[rootName] || rootName;
+  var matchRes = await gbifGet('/v1/species/match?name=' + encodeURIComponent(searchName) + '&verbose=false');
+  if (!matchRes.usageKey) {
+    throw new Error('GBIF could not match clade "' + rootName + '". Try a different root clade.');
+  }
+  var gbifRootKey = matchRes.usageKey;
+  console.log('[GBIF] root:', searchName, '→ key', gbifRootKey);
+
+  // ── Step 2: Count accepted species in this clade ─────────────────────
+  setLoadingStatus('Counting species in ' + rootName + '…');
+  var countRes = await gbifGet('/v1/species/search?higherTaxonKey=' + gbifRootKey +
+    '&rank=SPECIES&status=ACCEPTED&limit=1');
+  var total = countRes.count || 0;
+  if (total < 5) throw new Error('GBIF found fewer than 5 accepted species in "' + rootName + '".');
+  console.log('[GBIF] total accepted species:', total);
+
+  // ── Step 3: Random sample — retry up to 12 times ────────────────────
+  var MAX_ATTEMPTS = 12;
+  for (var attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    setLoadingStatus('Selecting random species (attempt ' + (attempt+1) + '/' + MAX_ATTEMPTS + ')…');
+    // Random offset, capped so we stay within the result set
+    var offset = Math.floor(Math.random() * Math.min(total, 50000));
+    // Fetch a page of 40 candidates around that offset
+    var pageSize = 40;
+    var searchPath = '/v1/species/search?higherTaxonKey=' + gbifRootKey +
+      '&rank=SPECIES&status=ACCEPTED&limit=' + pageSize + '&offset=' + offset;
+    var searchRes = await gbifGet(searchPath);
+    var candidates = (searchRes.results || []).filter(function(s) {
+      // Must have full backbone taxonomy
+      return s.kingdom && s.phylum && s.class && s.order &&
+             s.family && s.genus && s.species &&
+             s.status === 'ACCEPTED' &&
+             // Exclude names that look like OTUs or placeholder codes
+             !/^\d|incertae|unclassified|unknown|environmental|metagenom/i.test(s.species);
+    });
+
+    if (optExtant) {
+      // GBIF doesn't directly tag extinct species in its backbone, but we
+      // can filter out anything with 'fossil' in the name or order Coniferales etc.
+      // Main filter is: accepted status already excludes many problematic taxa.
+      // Additional heuristic: skip if name contains typical fossil indicators.
+      candidates = candidates.filter(function(s) {
+        return !/fossil|dino|†|palae|paleo/i.test(s.species + (s.genus||''));
+      });
+    }
+
+    if (candidates.length === 0) {
+      console.warn('[GBIF] No valid candidates at offset', offset, '— retrying');
+      continue;
+    }
+
+    // Pick a random candidate from the page
+    var chosen = candidates[Math.floor(Math.random() * candidates.length)];
+    console.log('[GBIF] candidate:', chosen.species, 'family:', chosen.family, 'order:', chosen.order);
+
+    // ── Step 4: Animate the taxonomy walk using GBIF backbone ──────────
+    var gbifTaxonomy = [
+      { rank: 'kingdom', name: chosen.kingdom },
+      { rank: 'phylum',  name: chosen.phylum  },
+      { rank: 'class',   name: chosen.class   },
+      { rank: 'order',   name: chosen.order   },
+      { rank: 'family',  name: chosen.family  },
+      { rank: 'genus',   name: chosen.genus   }
+    ].filter(function(n){ return n.name; });
+
+    for (var wi = 0; wi < gbifTaxonomy.length; wi++) {
+      await appendWalkStep({
+        ott_id:  null,
+        name:    gbifTaxonomy[wi].name,
+        rank:    gbifTaxonomy[wi].rank,
+        label:   rankLabel(gbifTaxonomy[wi].rank),
+        isLast:  false
+      });
+    }
+    // Final hidden step for the target species
+    await appendWalkStep({ rank: 'species', isLast: true });
+
+    // ── Step 5: Map GBIF species name → OTT ID via OTL TNRS ────────────
+    setLoadingStatus('Matching "' + chosen.species + '" to Open Tree of Life…');
+    var tnrsRes = await otl('/tnrs/match_names', {
+      names: [chosen.species],
+      do_approximate_matching: true,
+      include_suppressed: false
+    });
+    var matches = (tnrsRes.results && tnrsRes.results[0] && tnrsRes.results[0].matches) || [];
+    // Prefer exact species-rank match
+    matches.sort(function(a,b){ return (b.score||0)-(a.score||0); });
+    var best = matches.find(function(m){ return m.taxon && m.taxon.ott_id && m.taxon.rank === 'species'; })
+             || matches.find(function(m){ return m.taxon && m.taxon.ott_id; });
+
+    if (!best || !best.taxon || !best.taxon.ott_id) {
+      console.warn('[GBIF] TNRS could not find OTT ID for', chosen.species, '— retrying');
+      // Clear the walk steps just added for this candidate
+      var cont = document.getElementById('walk-container');
+      while (cont.childNodes.length > 0) cont.removeChild(cont.lastChild);
+      continue;
+    }
+
+    var ottId = best.taxon.ott_id;
+    console.log('[GBIF] OTT ID:', ottId, 'for', chosen.species);
+
+    // ── Step 6: Build target from OTL lineage ──────────────────────────
+    setLoadingStatus('Fetching lineage from Open Tree of Life…');
+    try {
+      await buildTarget(ottId);
+      await warmOzCache();
+      return; // SUCCESS
+    } catch(te) {
+      console.warn('[GBIF] buildTarget rejected ott' + ottId + ':', te.message);
+      // Clear walk steps and retry
+      var cont2 = document.getElementById('walk-container');
+      while (cont2.childNodes.length > 0) cont2.removeChild(cont2.lastChild);
+      continue;
+    }
+  }
+
+  throw new Error('Could not find a valid target species after ' + MAX_ATTEMPTS + ' attempts in "' + rootName + '". Try a different clade.');
+}
+
+// ====================================================
+// TAXONOMY QUALITY CHECK
+// ====================================================
+var RANK_ORDER = ['kingdom','subkingdom','superphylum','phylum','subphylum',
+  'superclass','class','subclass','infraclass','superorder','order','suborder',
+  'infraorder','superfamily','family','subfamily','tribe','genus','subgenus','species'];
+
+function rankDepth(rank) {
+  var r = (rank||'').toLowerCase().trim();
+  var i = RANK_ORDER.indexOf(r);
+  return i >= 0 ? i : -1;
+}
+
+function checkTaxonomyQuality(lineage) {
+  var named = lineage.filter(function(n){
+    return n.rank && n.rank !== 'no rank' && rankDepth(n.rank) >= 0;
+  });
+  if (named.length < 4) return { ok:false, reason:'Too few named ranks ('+named.length+')' };
+  var hasGenus   = named.some(function(n){ return (n.rank||'').toLowerCase()==='genus'; });
+  var hasSpecies = named.some(function(n){ return (n.rank||'').toLowerCase()==='species'; });
+  if (!hasGenus || !hasSpecies) return { ok:false, reason:'Missing genus or species in lineage' };
+  for (var i=1; i<named.length; i++) {
+    var d1=rankDepth(named[i-1].rank), d2=rankDepth(named[i].rank);
+    if (d1>=0 && d2>=0 && d2-d1>3) return { ok:false, reason:'Taxonomy gap: '+named[i-1].rank+' → '+named[i].rank };
+  }
+  return { ok:true };
+}
+
+function TargetRejectedError(msg) { this.message=msg; this.retriable=true; }
+TargetRejectedError.prototype = Object.create(Error.prototype);
+
+// ====================================================
+// WALK ANIMATION STEP (rank label only, no species name)
+// ====================================================
+async function appendWalkStep(node) {
+  var cont = document.getElementById('walk-container');
+  var step = document.createElement('div');
+  step.className = 'walk-step' + (node.isLast ? ' hidden-step' : '');
+  if (!node.isLast) {
+    var line = document.createElement('div'); line.className = 'walk-line';
+    step.appendChild(line);
+  }
+  var dot=document.createElement('div'); dot.className='walk-dot';
+  var rankEl=document.createElement('div'); rankEl.className='walk-rank';
+  var nameEl=document.createElement('div'); nameEl.className='walk-name';
+  if (node.isLast) {
+    rankEl.textContent = ''; nameEl.textContent = '• • • ?';
+  } else {
+    rankEl.textContent = (node.rank||'').toUpperCase();
+    nameEl.textContent = (node.label || rankLabel(node.rank)) + ' selected';
+    nameEl.style.fontStyle='normal'; nameEl.style.fontSize='14px'; nameEl.style.color='var(--ink2)';
+  }
+  step.appendChild(dot); step.appendChild(rankEl); step.appendChild(nameEl);
+  cont.appendChild(step);
+  step.scrollIntoView({ behavior:'smooth', block:'nearest' });
+  await sleep(40);
+  step.classList.add('visible');
+  if (!node.isLast) step.classList.add('revealed');
+  await sleep(node.isLast ? 280 : 360);
+}
+
+// ====================================================
+// BUILD TARGET from OTT ID — validates quality
+// ====================================================
+async function buildTarget(id) {
+  var info;
+  try {
+    info = await taxonInfo(Number(id), { include_lineage: true });
+  } catch (err) {
+    throw new Error('Could not fetch lineage for target ott'+id+':\n'+err.message);
+  }
+  var tName = info.unique_name || info.name;
+  if (optExtant && isExtinct(info)) throw new TargetRejectedError('ott'+id+' ('+tName+') is extinct');
+  try {
+    var ozDet = await ozGet('/API/node_details.json?OTT='+Number(id));
+    if (ozDet && ozDet.node) {
+      var ozFlags = ozDet.node.flags || ozDet.node.clade_flags || '';
+      if (optExtant && typeof ozFlags==='string' && ozFlags.toLowerCase().includes('extinct'))
+        throw new TargetRejectedError('ott'+id+' ('+tName+') extinct in OneZoom');
+      if (ozDet.node.vernacular) ozCache[Number(id)] = ozDet.node.vernacular;
+      if (ozDet.node.img) ozImgCache[Number(id)] = Number(ozDet.node.img);
+    }
+  } catch(e) { if (e.retriable) throw e; console.warn('[OZ extant check]', e.message); }
+  var rawLin = (info.lineage||[]).slice().reverse();
+  var fullLin = rawLin.map(function(n){ return {ott_id:n.ott_id, name:n.unique_name||n.name, rank:n.rank}; });
+  var tTaxon = {ott_id:info.ott_id, name:tName, rank:info.rank||'species'};
+  fullLin.push(tTaxon);
+  var qual = checkTaxonomyQuality(fullLin);
+  if (!qual.ok) throw new TargetRejectedError('ott'+id+' ('+tName+') rejected: '+qual.reason);
+  targetOttId = info.ott_id;
+  targetTaxon = tTaxon;
+  targetFullLineage = fullLin;
+  var named = targetFullLineage.filter(function(n){ return n.rank && n.rank!=='no rank'; });
+  targetMajorPath = named.length>0 ? named : targetFullLineage.slice();
+  if (!targetMajorPath.find(function(n){ return Number(n.ott_id)===Number(targetTaxon.ott_id); }))
+    targetMajorPath.push(targetTaxon);
+}
+
+// ====================================================
+// GAME START
+// ====================================================
+async function startGame() {
+  const btn = document.getElementById('start-btn');
+  btn.disabled = true; btn.textContent = 'Loading…';
+
+  targetOttId = null; targetTaxon = null;
+  targetFullLineage = []; targetMajorPath = [];
+  bestMrcaFullIdx = -1; guesses = []; solved = false; hints = []; ozCache = {}; ozImgCache = {}; nodeExpanded = {};
+
+  if (targetMode === 'custom') {
+    btn.disabled = false; btn.textContent = 'Choose Target →';
+    document.getElementById('ts-input').value = '';
+    document.getElementById('ts-status').textContent = '';
+    document.getElementById('ts-drop').classList.remove('open');
+    document.getElementById('ts-drop').innerHTML = '';
+    document.getElementById('target-selected-box').style.display = 'none';
+    document.getElementById('ts-proceed-btn').disabled = true;
+    tsResults = []; tsIndex = -1;
+    showScreen('screen-target');
+    setTimeout(function() { document.getElementById('ts-input').focus(); }, 100);
+    return;
+  }
+
+  document.getElementById('walk-container').innerHTML = '';
+  document.getElementById('loading-proceed').style.display = 'none';
+  var errEl = document.getElementById('loading-error');
+  if (errEl) { errEl.style.display = 'none'; errEl.innerHTML = ''; }
+  setLoadingStatus('');
+  showScreen('screen-loading');
+
+  try {
+    setLoadingStatus('Connecting to GBIF & Open Tree of Life…');
+    var alive = await probeConnectivity();
+    if (!alive) {
+      throw new Error(
+        'Could not reach the Open Tree of Life API.\n\n' +
+        '  • Check your internet connection\n' +
+        '  • Serve via local web server, not file://\n' +
+        '      npx serve .    OR    python3 -m http.server 8080'
+      );
+    }
+    await gbifSelectTarget(rootOttId, rootName);
+    setLoadingStatus('Target selected. Ready to play.');
+    document.getElementById('loading-proceed').style.display = 'block';
+  } catch (err) {
+    console.error('[PHYLO]', err);
+    setLoadingStatus('Error — see message below.');
+    showLoadingError('Could not select a target species.\n\n' + err.message);
+    btn.disabled = false; btn.textContent = 'Begin the Search';
+  }
+}
+
+
+function proceedToGame() {
+  document.getElementById('hdr-mode').textContent = mode === 'min_clade' ? 'MIN CLADE' : 'MRCA';
+  // Show scope in header if restricted
+  var scopeBadge = rootOttId !== START_OTT ? ' · ' + rootName : '';
+  var extBadge   = optExtant ? ' · extant' : '';
+  var spBadge    = optSpeciesOnly ? ' · species only' : '';
+  document.getElementById('hdr-mode').textContent =
+    (mode === 'min_clade' ? 'MIN CLADE' : 'MRCA') + scopeBadge + extBadge + spBadge;
+  document.getElementById('hdr-count').textContent = '0 guesses';
+  document.getElementById('clue-empty').style.display = 'block';
+  document.getElementById('clue-main').style.display = 'none';
+  document.getElementById('hist-section').style.display = 'none';
+  document.getElementById('hist-list').innerHTML = '';
+  document.getElementById('hint-section').style.display = 'none';
+  document.getElementById('hint-box').innerHTML = '';
+  hints = [];
+  // Show hint button only in min_clade mode
+  var hintBtn = document.getElementById('btn-hint');
+  hintBtn.style.display = mode === 'min_clade' ? 'flex' : 'none';
+  hintBtn.disabled = true; // disabled until first guess
+  document.getElementById('hint-cost-label').textContent = '';
+  showScreen('screen-game');
+  initTreeInteraction();
+  updateDebugPanel();
+  requestAnimationFrame(function() { requestAnimationFrame(drawTree); });
+  document.getElementById('s-input').focus();
+}
+
+// ====================================================
+// CUSTOM TARGET SEARCH (choose-your-own screen)
+// ====================================================
+var tsResults = [];
+var tsIndex   = -1;
+var tsTimer   = null;
+var pendingCustomTarget = null; // {ott_id, name} chosen by setter
+
+function onTargetInput(v) {
+  clearTimeout(tsTimer);
+  var drop = document.getElementById('ts-drop');
+  if (v.trim().length < 2) {
+    drop.classList.remove('open'); drop.innerHTML = '';
+    document.getElementById('ts-status').textContent = '';
+    return;
+  }
+  document.getElementById('ts-status').textContent = 'Searching…';
+  tsTimer = setTimeout(async function() {
+    try {
+      var results = await searchSpecies(v.trim());
+      // Only show actual species (rank === 'species') or unranked leaves
+      tsResults = results.filter(function(r) {
+        return r.rank === 'species' || r.rank === '' || r.rank === 'no rank';
+      }).slice(0, 12);
+      renderTargetDrop();
+      document.getElementById('ts-status').textContent = tsResults.length ? '' : 'No species found — try a different name';
+    } catch (e) {
+      console.error('[PHYLO target search]', e);
+      document.getElementById('ts-status').textContent = 'Search error: ' + e.message;
+    }
+  }, 350);
+}
+
+function renderTargetDrop() {
+  var drop = document.getElementById('ts-drop');
+  drop.innerHTML = ''; tsIndex = -1;
+  if (!tsResults.length) { drop.classList.remove('open'); return; }
+  tsResults.forEach(function(r, i) {
+    var d = document.createElement('div');
+    d.className = 'dropdown-item';
+    d.innerHTML = '<div class="di-name">' + esc(r.unique_name || r.name) + '</div>' +
+                  '<div class="di-id">ott' + r.ott_id + '</div>';
+    d.addEventListener('click', function() { pickTarget(i); });
+    drop.appendChild(d);
+  });
+  drop.classList.add('open');
+}
+
+function onTargetKey(e) {
+  var drop = document.getElementById('ts-drop');
+  var items = drop.querySelectorAll('.dropdown-item');
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    tsIndex = Math.min(tsIndex + 1, items.length - 1);
+    items.forEach(function(it, i) { it.classList.toggle('hi', i === tsIndex); });
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    tsIndex = Math.max(tsIndex - 1, 0);
+    items.forEach(function(it, i) { it.classList.toggle('hi', i === tsIndex); });
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (tsIndex >= 0) pickTarget(tsIndex);
+    else if (tsResults.length) pickTarget(0);
+  } else if (e.key === 'Escape') {
+    drop.classList.remove('open');
+  }
+}
+
+async function pickTarget(i) {
+  var r = tsResults[i];
+  if (!r) return;
+  document.getElementById('ts-drop').classList.remove('open');
+  document.getElementById('ts-input').value = '';
+  document.getElementById('ts-status').textContent = 'Loading species data…';
+
+  try {
+    await buildTarget(r.ott_id);
+    await warmOzCache();
+    pendingCustomTarget = { ott_id: r.ott_id, name: r.unique_name || r.name };
+    await warmOzCache();
+    document.getElementById('ts-name').textContent = targetTaxon.name;
+    document.getElementById('ts-ott').textContent = 'ott' + targetTaxon.ott_id;
+    document.getElementById('target-selected-box').style.display = 'block';
+    document.getElementById('ts-proceed-btn').disabled = false;
+    document.getElementById('ts-status').textContent = '';
+  } catch (err) {
+    console.error('[PHYLO pickTarget]', err);
+    document.getElementById('ts-status').textContent = 'Error loading species: ' + err.message;
+  }
+}
+
+async function proceedFromCustomTarget() {
+  if (!targetOttId) return;
+  // Reset game state (target already set by buildTarget in pickTarget)
+  bestMrcaFullIdx = -1; guesses = []; solved = false; hints = []; ozCache = {}; ozImgCache = {}; nodeExpanded = {};
+  proceedToGame();
+}
+
+// ====================================================
+// GAME-SCREEN AUTOCOMPLETE (guess input)
+// ====================================================
+function onInput(v) {
+  clearTimeout(srTimer);
+  const drop = document.getElementById('s-drop');
+  if (v.trim().length < 2) {
+    drop.classList.remove('open');
+    drop.innerHTML = '';
+    setStatus('');
+    return;
+  }
+  setStatus('Searching…');
+  srTimer = setTimeout(async function() {
+    try {
+      const results = await searchSpecies(v.trim());
+      srResults = results.slice(0, 14);
+      renderDrop();
+      setStatus(srResults.length ? '' : 'No matches found — try a different spelling');
+    } catch (e) {
+      console.error('[PHYLO search]', e);
+      setStatus('Search error: ' + e.message);
+    }
+  }, 350);
+}
+
+function renderDrop() {
+  const drop = document.getElementById('s-drop');
+  drop.innerHTML = ''; srIndex = -1;
+  if (!srResults.length) { drop.classList.remove('open'); return; }
+  srResults.forEach(function(r, i) {
+    const d = document.createElement('div');
+    d.className = 'dropdown-item';
+    const rankStr = r.rank ? (' <span style="color:var(--ink3);font-size:9px;text-transform:uppercase;letter-spacing:1px;">' + esc(r.rank) + '</span>') : '';
+    d.innerHTML = '<div class="di-name">' + esc(r.unique_name || r.name) + rankStr + '</div>' +
+                  '<div class="di-id">ott' + r.ott_id + '</div>';
+    d.addEventListener('click', function() { pick(i); });
+    drop.appendChild(d);
+  });
+  drop.classList.add('open');
+}
+
+function onKey(e) {
+  const drop = document.getElementById('s-drop');
+  const items = drop.querySelectorAll('.dropdown-item');
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    srIndex = Math.min(srIndex+1, items.length-1);
+    items.forEach((it,i) => it.classList.toggle('hi', i===srIndex));
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    srIndex = Math.max(srIndex-1, 0);
+    items.forEach((it,i) => it.classList.toggle('hi', i===srIndex));
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (srIndex >= 0) pick(srIndex);
+    else if (srResults.length) pick(0);
+  } else if (e.key === 'Escape') {
+    drop.classList.remove('open');
+  }
+}
+
+async function pick(i) {
+  const r = srResults[i];
+  if (!r) return;
+  document.getElementById('s-drop').classList.remove('open');
+  const inp = document.getElementById('s-input');
+  inp.value = ''; inp.disabled = true;
+  setStatus('Looking up ' + (r.unique_name || r.name) + '…');
+  var hadError = false;
+  try { await processGuess(r.ott_id, r.unique_name || r.name); }
+  catch (err) {
+    console.error('[pick]', err);
+    setStatus('Unexpected error: ' + err.message);
+    hadError = true;
+  }
+  inp.disabled = false;
+  // Only clear status on clean success — leave error/rejection messages visible
+  if (!solved && !hadError) { inp.focus(); setStatus(''); }
+  else if (!solved)          { inp.focus(); }
+}
+
+// ====================================================
+// CORE GUESS LOGIC
+// ====================================================
+async function processGuess(gid, gname) {
+  if (guesses.some(g => g.ott_id === gid)) { setStatus('Already guessed!'); return; }
+
+  // Fetch guess lineage — needed for scope check, extinct check, rank check, and MRCA
+  setStatus('Checking guess…');
+  var gInfo;
+  try {
+    gInfo = await taxonInfo(Number(gid), { include_lineage: true });
+  } catch(e) {
+    setStatus('Could not look up that taxon — try another.');
+    return;
+  }
+
+  // ── Species-only check ──
+  if (optSpeciesOnly && gInfo.rank !== 'species') {
+    setStatus('Species-only mode: please guess a species, not a ' + (gInfo.rank || 'higher taxon') + '.');
+    return;
+  }
+
+  // ── Extinct check ──
+  if (optExtant && isExtinct(gInfo)) {
+    setStatus('"' + gname + '" is extinct — extant species only in this game.');
+    return;
+  }
+
+  // ── Scope check: guess must be a descendant of rootOttId ──
+  if (rootOttId !== START_OTT) {
+    var glin = gInfo.lineage || [];
+    var inScope = (Number(gInfo.ott_id) === rootOttId) ||
+      glin.some(function(n){ return Number(n.ott_id) === rootOttId; });
+    if (!inScope) {
+      setStatus('"' + gname + '" is outside the scope of this game (' + rootName + ' only).');
+      return;
+    }
+  }
+
+  // Win condition
+  if (gid === targetOttId) {
+    var winCommon = await ozCommonName(Number(gid)).catch(function(){ return null; });
+    guesses.push({ ott_id: gid, species_name: gname, commonName: winCommon, mrcaNode: { name: targetTaxon.name, rank: 'species', ott_id: gid }, fullIdx: targetFullLineage.length - 1 });
+    bestMrcaFullIdx = targetFullLineage.length - 1;
+    solved = true;
+    updateCount(); drawTree();
+    showWin(false);
+    return;
+  }
+
+  var mrcaNode = null;
+
+  if (mode === 'mrca') {
+    try {
+      var res = await synMRCA([gid, targetOttId]);
+      var t = res.mrca && res.mrca.taxon;
+      if (t) {
+        mrcaNode = { name: t.unique_name || t.name, rank: t.rank || 'clade', ott_id: t.ott_id, synth: true };
+      }
+    } catch (e) { console.warn('synMRCA failed:', e.message); }
+  }
+
+  if (mode === 'min_clade') {
+    // Try OneZoom MRCA first (gives common names, uses synthetic tree)
+    try {
+      var ozRes = await ozMRCA(Number(gid), Number(targetOttId));
+      if (ozRes && ozRes.mrca) {
+        var ozM = ozRes.mrca;
+        var ozOtt = ozM.ott || ozM.ott_id;
+        // Verify this node is in our target lineage (fall back if not)
+        var ozFi = targetFullLineage.findIndex(function(n){ return Number(n.ott_id) === Number(ozOtt); });
+        if (ozFi >= 0) {
+          mrcaNode = {
+            name: ozM.name || targetFullLineage[ozFi].name,
+            rank: ozM.rank || targetFullLineage[ozFi].rank || 'clade',
+            ott_id: ozOtt,
+            commonName: ozM.vernacular || null
+          };
+        }
+      }
+    } catch(e) { console.warn('[OZ MRCA failed, using OTL lineage]', e.message); }
+  }
+
+  if (!mrcaNode) {
+    // OTL taxonomy lineage comparison fallback
+    var tMap2 = new Map(targetFullLineage.map(function(n){ return [Number(n.ott_id), n]; }));
+    // Walk from guess's immediate parent upward (lineage is parent-first)
+    var glin2 = gInfo.lineage || [];
+    console.log('[MRCA fallback] guess lineage length:', glin2.length, 'target lineage length:', targetFullLineage.length);
+    for (var li = 0; li < glin2.length; li++) {
+      var ln = glin2[li];
+      var lnKey = Number(ln.ott_id);
+      if (tMap2.has(lnKey)) {
+        var found = tMap2.get(lnKey);
+        mrcaNode = { name: ln.unique_name || ln.name || found.name, rank: ln.rank || found.rank, ott_id: lnKey };
+        console.log('[MRCA fallback] found shared node:', mrcaNode.name, 'at lineage index', li);
+        break;
+      }
+    }
+    if (!mrcaNode) {
+      // Guess has NO shared node with target in full lineage — truly out of scope
+      console.warn('[MRCA] no shared ancestor found between ott'+gid+' and ott'+targetOttId);
+    }
+  }
+
+  if (!mrcaNode) {
+    setStatus('\"' + gname + '\" shares no common ancestor with the target in this scope. ' +
+      (rootOttId !== START_OTT ? 'Likely outside ' + rootName + '.' : 'Check browser console for details.'));
+    return;
+  }
+
+  // Enrich with common names from OneZoom (non-blocking)
+  var guessCommon  = await ozCommonName(Number(gid)).catch(function(){ return null; });
+  var mrcaCommon   = mrcaNode.commonName || await ozCommonName(Number(mrcaNode.ott_id)).catch(function(){ return null; });
+  mrcaNode.commonName = mrcaCommon;
+
+  // Find depth in full lineage
+  const fullIdx = targetFullLineage.findIndex(function(n){ return Number(n.ott_id) === Number(mrcaNode.ott_id); });
+  const guess = { ott_id: gid, species_name: gname, commonName: guessCommon, mrcaNode: mrcaNode, fullIdx: fullIdx };
+  guesses.push(guess);
+
+  if (fullIdx > bestMrcaFullIdx) bestMrcaFullIdx = fullIdx;
+
+  updateCount(); showClue(guess); addHistory(guess); drawTree();
+}
+
+function updateCount() {
+  document.getElementById('hdr-count').textContent = `${guesses.length} guess${guesses.length!==1?'es':''}`;
+  refreshHintButton();
+}
+
+function refreshHintButton() {
+  if (mode !== 'min_clade') return;
+  var btn = document.getElementById('btn-hint');
+  var lbl = document.getElementById('hint-cost-label');
+  // Can hint if: there's a best clade, the next node down exists, and game not solved
+  var nextHintNode = getNextHintNode();
+  btn.disabled = (!nextHintNode || solved);
+  if (nextHintNode) {
+    lbl.textContent = '(reveals next clade)';
+  } else if (bestMrcaFullIdx < 0) {
+    lbl.textContent = '(make a guess first)';
+    btn.disabled = true;
+  } else {
+    lbl.textContent = '(no further clues)';
+  }
+}
+
+// Find the next major-rank node below bestMrcaFullIdx in targetFullLineage
+function getNextHintNode() {
+  if (bestMrcaFullIdx < 0) return null;
+  // Look for the next node in targetFullLineage after bestMrcaFullIdx
+  // that hasn't been hinted already and is a major rank (or any node deeper)
+  var hintedIds = new Set(hints.map(function(h){ return h.ott_id; }));
+  for (var i = bestMrcaFullIdx + 1; i < targetFullLineage.length - 1; i++) {
+    var n = targetFullLineage[i];
+    if (!hintedIds.has(n.ott_id)) return { node: n, fullIdx: i };
+  }
+  return null;
+}
+
+// ====================================================
+// HINT
+// ====================================================
+function useHint() {
+  var next = getNextHintNode();
+  if (!next) return;
+
+  var hintNode = next.node;
+  var hintIdx  = next.fullIdx;
+
+  // Record the hint
+  hints.push({ ott_id: hintNode.ott_id, name: hintNode.unique_name || hintNode.name, rank: hintNode.rank || '', fullIdx: hintIdx });
+
+  // Advance bestMrcaFullIdx so the tree updates
+  if (hintIdx > bestMrcaFullIdx) bestMrcaFullIdx = hintIdx;
+
+  // Render hint box
+  var box = document.getElementById('hint-box');
+  box.innerHTML = '';
+  hints.forEach(function(h, i) {
+    var row = document.createElement('div');
+    row.className = 'hint-item';
+    row.innerHTML =
+      '<span class="hint-num">' + (i+1) + '.</span>' +
+      '<span class="hint-rank">' + esc(h.rank.toUpperCase()) + '</span>' +
+      '<span class="hint-name">' + esc(h.name) + '</span>';
+    box.appendChild(row);
+  });
+  document.getElementById('hint-section').style.display = 'block';
+
+  // Update header count to reflect hints used
+  document.getElementById('hdr-count').textContent =
+    guesses.length + ' guess' + (guesses.length !== 1 ? 'es' : '') +
+    ', ' + hints.length + ' hint' + (hints.length !== 1 ? 's' : '');
+
+  drawTree();
+  refreshHintButton();
+}
+
+function showClue(g) {
+  document.getElementById('clue-empty').style.display = 'none';
+  var el = document.getElementById('clue-main');
+  el.style.display = 'block';
+  var modeWord = mode === 'mrca' ? 'most recent common ancestor' : 'smallest shared clade';
+  var speciesDisplay = g.commonName
+    ? esc(g.species_name) + ' <span style="color:var(--ink3);font-size:13px;">(' + esc(g.commonName) + ')</span>'
+    : esc(g.species_name);
+  var cladeDisplay = esc(g.mrcaNode.name);
+  if (g.mrcaNode.commonName) {
+    cladeDisplay += ' <span style="color:var(--green3);font-size:14px;font-style:normal;">(' + esc(g.mrcaNode.commonName) + ')</span>';
+  }
+  el.innerHTML =
+    '<div class="clue-species">' + speciesDisplay + '</div>' +
+    '<div style="font-size:13px;color:var(--ink3);margin:3px 0;">' + modeWord + '</div>' +
+    '<div class="clue-rank">' + esc(g.mrcaNode.rank || 'clade') + '</div>' +
+    '<div class="clue-node">' + cladeDisplay + '</div>' +
+    (g.mrcaNode.synth && mode === 'mrca' ? '<div class="clue-note">from synthetic phylogenetic tree</div>' : '');
+}
+
+function addHistory(g) {
+  document.getElementById('hist-section').style.display = 'block';
+  var ratio = g.fullIdx >= 0 ? g.fullIdx / Math.max(targetFullLineage.length - 1, 1) : 0;
+  var col = heatColor(ratio);
+  var list = document.getElementById('hist-list');
+  var item = document.createElement('div');
+  item.className = 'hist-item';
+  var spName = g.species_name + (g.commonName ? ' (' + g.commonName + ')' : '');
+  var cladeName = (g.mrcaNode.rank || '') + ': ' + g.mrcaNode.name + (g.mrcaNode.commonName ? ' (' + g.mrcaNode.commonName + ')' : '');
+  item.innerHTML =
+    '<div class="hist-num">' + guesses.length + '.</div>' +
+    '<div class="hist-info">' +
+      '<div class="hist-species">' + esc(spName) + '</div>' +
+      '<div class="hist-clade">→ <strong>' + esc(cladeName) + '</strong></div>' +
+    '</div>' +
+    '<div class="hist-dot" style="background:' + col + '" title="Closeness"></div>';
+  list.insertBefore(item, list.firstChild);
+}
+
+function heatColor(r) {
+  if (r < 0.25) return '#c4562a';
+  if (r < 0.50) return '#c4a35a';
+  if (r < 0.75) return '#8bc45a';
+  return '#2d6b47';
+}
+
+// ====================================================
+// WIN / GIVE UP
+// ====================================================
+function giveUp() {
+  if (!confirm('Give up and reveal the target species?')) return;
+  showWin(true);
+}
+
+function showWin(gave) {
+  document.getElementById('win-icon').textContent = gave ? '🔍' : '🎉';
+  document.getElementById('win-title').textContent = gave ? 'Revealed!' : 'Correct!';
+  document.getElementById('win-sub').textContent = gave
+    ? 'The hidden species was:'
+    : `You found it in ${guesses.length} guess${guesses.length!==1?'es':''}!`;
+  document.getElementById('win-name').textContent = targetTaxon.name;
+  document.getElementById('win-ott').textContent = `Open Tree of Life · ott${targetOttId}`;
+
+  const DISP = new Set(['kingdom','phylum','class','order','family','genus','species']);
+  const items = targetFullLineage.filter(n => DISP.has(n.rank?.toLowerCase()));
+  document.getElementById('win-lineage').innerHTML = items.map(n => `
+    <div class="win-lin-item${n.ott_id===targetTaxon.ott_id?' target':''}">
+      <span class="win-lin-rank">${n.rank||''}</span>
+      <span class="win-lin-name">${esc(n.name)}</span>
+    </div>
+  `).join('');
+
+  var hintsStr = hints.length > 0 ? ', ' + hints.length + ' hint' + (hints.length !== 1 ? 's' : '') : '';
+  document.getElementById('win-stats').innerHTML = gave
+    ? `Made <span>${guesses.length}</span> guess${guesses.length!==1?'es':''}${hintsStr}`
+    : `Found in <span>${guesses.length}</span> guess${guesses.length!==1?'es':''}${hintsStr}`;
+
+  showScreen('screen-win');
+}
+
+function playAgain() {
+  const b = document.getElementById('start-btn');
+  b.disabled = false; b.textContent = targetMode === 'custom' ? 'Choose Target →' : 'Begin the Search';
+  document.getElementById('tog-extant').checked  = optExtant;
+  document.getElementById('tog-species').checked = optSpeciesOnly;
+  showScreen('screen-intro');
+}
+
+// ====================================================
+// TREE VISUALIZATION — vertical cladogram, zoomable/pannable
+// ====================================================
+function svgN(tag) { return document.createElementNS('http://www.w3.org/2000/svg', tag); }
+
+function applyTreeTransform() {
+  var g = document.getElementById('tree-g');
+  if (g) g.setAttribute('transform',
+    'translate(' + treeZoom.x.toFixed(1) + ',' + treeZoom.y.toFixed(1) + ') scale(' + treeZoom.scale.toFixed(4) + ')');
+}
+
+function zoomTree(factor) {
+  var svg = document.getElementById('tree-svg');
+  var r = svg.getBoundingClientRect();
+  var cx = r.width / 2, cy = r.height / 2;
+  treeZoom.scale = Math.max(0.15, Math.min(6, treeZoom.scale * factor));
+  treeZoom.x = cx - (cx - treeZoom.x) * factor;
+  treeZoom.y = cy - (cy - treeZoom.y) * factor;
+  applyTreeTransform();
+}
+
+function fitTree() {
+  var svg = document.getElementById('tree-svg');
+  var r = svg.getBoundingClientRect();
+  var svgW = r.width || 500, svgH = r.height || 400;
+  var PAD = 32;
+  var scale = Math.min((svgW - PAD*2) / treeContentSize.w, (svgH - PAD*2) / treeContentSize.h, 2);
+  treeZoom.scale = scale;
+  treeZoom.x = (svgW - treeContentSize.w * scale) / 2;
+  treeZoom.y = PAD;
+  applyTreeTransform();
+}
+
+function initTreeInteraction() {
+  var svg = document.getElementById('tree-svg');
+  var lastPinch = null;
+
+  svg.addEventListener('wheel', function(e) {
+    e.preventDefault();
+    var r = svg.getBoundingClientRect();
+    var mx = e.clientX - r.left, my = e.clientY - r.top;
+    var factor = e.deltaY < 0 ? 1.12 : 1/1.12;
+    treeZoom.scale = Math.max(0.15, Math.min(6, treeZoom.scale * factor));
+    treeZoom.x = mx - (mx - treeZoom.x) * factor;
+    treeZoom.y = my - (my - treeZoom.y) * factor;
+    applyTreeTransform();
+  }, { passive: false });
+
+  svg.addEventListener('mousedown', function(e) {
+    if (e.button !== 0) return;
+    treeDrag = { sx: e.clientX, sy: e.clientY, tx: treeZoom.x, ty: treeZoom.y };
+  });
+  window.addEventListener('mousemove', function(e) {
+    if (!treeDrag) return;
+    treeZoom.x = treeDrag.tx + (e.clientX - treeDrag.sx);
+    treeZoom.y = treeDrag.ty + (e.clientY - treeDrag.sy);
+    applyTreeTransform();
+  });
+  window.addEventListener('mouseup', function() { treeDrag = null; });
+
+  svg.addEventListener('touchstart', function(e) {
+    if (e.touches.length === 1) treeDrag = { sx: e.touches[0].clientX, sy: e.touches[0].clientY, tx: treeZoom.x, ty: treeZoom.y };
+    lastPinch = null;
+  }, { passive: true });
+  svg.addEventListener('touchmove', function(e) {
+    if (e.touches.length === 1 && treeDrag) {
+      treeZoom.x = treeDrag.tx + (e.touches[0].clientX - treeDrag.sx);
+      treeZoom.y = treeDrag.ty + (e.touches[0].clientY - treeDrag.sy);
+      applyTreeTransform();
+    } else if (e.touches.length === 2) {
+      var dx = e.touches[0].clientX - e.touches[1].clientX;
+      var dy = e.touches[0].clientY - e.touches[1].clientY;
+      var d = Math.sqrt(dx*dx + dy*dy);
+      if (lastPinch !== null) { treeZoom.scale = Math.max(0.15, Math.min(6, treeZoom.scale * d / lastPinch)); applyTreeTransform(); }
+      lastPinch = d;
+    }
+  }, { passive: true });
+  svg.addEventListener('touchend', function() { treeDrag = null; lastPinch = null; }, { passive: true });
+}
+
+
+// ====================================================================
+// GAME TREE — proper recursive insertion with layout
+// ====================================================================
+
+// ── Resolve game-root clade node ────────────────────────────────────
+function resolveGameRoot() {
+  if (rootOttId !== START_OTT) {
+    var found = targetFullLineage.find(function(n){ return Number(n.ott_id) === rootOttId; });
+    return found || { ott_id: rootOttId, name: rootName, rank: 'clade' };
+  }
+  return targetMajorPath.length > 0 ? targetMajorPath[0] : null;
+}
+
+// ── Build the tree from current guesses/hints ────────────────────────
+// Returns a clade node (root of the display tree).
+// Node shapes:
+//   Clade: { kind:'clade', ott_id, name, rank, fullIdx, hinted, commonName, children:[...] }
+//   Guess: { kind:'guess', data: guessObj }
+//   Target:{ kind:'target' }
+function buildGameTree() {
+  var getFullIdx = function(oid) {
+    return targetFullLineage.findIndex(function(m){ return Number(m.ott_id) === Number(oid); });
+  };
+
+  // ── 1. Collect unique internal clade nodes (root + mrcaNodes + hints) ──
+  var cladeMap = new Map(); // Number(ott_id) → clade-node prototype
+
+  var gr = resolveGameRoot();
+  if (!gr) return null;
+  var rootFi = getFullIdx(gr.ott_id);
+  if (rootFi < 0) rootFi = 0;
+
+  function addInternal(oid, name, rank, fi, hinted, cn) {
+    var key = Number(oid);
+    if (cladeMap.has(key)) return;
+    cladeMap.set(key, { kind:'clade', ott_id: key, name: name, rank: rank||'',
+      fullIdx: fi, hinted: !!hinted, commonName: cn||null, children:[] });
+  }
+
+  addInternal(gr.ott_id, gr.name, gr.rank, rootFi, false, null);
+
+  guesses.forEach(function(g) {
+    if (g.fullIdx >= 0) {
+      addInternal(g.mrcaNode.ott_id, g.mrcaNode.name, g.mrcaNode.rank,
+        g.fullIdx, false, g.mrcaNode.commonName || null);
+    }
+  });
+
+  hints.forEach(function(h) {
+    var fi = getFullIdx(h.ott_id);
+    if (fi >= 0) addInternal(h.ott_id, h.name, h.rank, fi, true, null);
+  });
+
+  // ── 2. Sort clades shallowest→deepest, build tree by insertion ──────
+  var sorted = Array.from(cladeMap.values()).sort(function(a,b){ return a.fullIdx - b.fullIdx; });
+
+  var root = sorted[0];
+  root.children = [{ kind:'target' }];
+
+  function insertClade(parent, node) {
+    // Try to descend into a child clade that is a strict ancestor of node
+    for (var i = 0; i < parent.children.length; i++) {
+      var c = parent.children[i];
+      if (c.kind === 'clade' && c.fullIdx < node.fullIdx) {
+        if (insertClade(c, node)) return true;
+      }
+    }
+    // parent is the correct attachment point
+    if (parent.fullIdx < node.fullIdx) {
+      // Children that should move under the new node:
+      //   target always moves, clades deeper than node move, guess-leaves deeper than node move
+      var toMove = [], toKeep = [];
+      parent.children.forEach(function(c) {
+        var move = (c.kind === 'target')
+          || (c.kind === 'clade' && c.fullIdx > node.fullIdx)
+          || (c.kind === 'guess' && c.data.fullIdx > node.fullIdx);
+        if (move) toMove.push(c); else toKeep.push(c);
+      });
+      node.children = toMove;
+      toKeep.push(node);
+      parent.children = toKeep;
+      return true;
+    }
+    return false;
+  }
+
+  for (var i = 1; i < sorted.length; i++) {
+    sorted[i].children = [];
+    insertClade(root, sorted[i]);
+  }
+
+  // ── 3. Add guess leaves ─────────────────────────────────────────────
+  function findById(node, id) {
+    if (node.kind === 'clade' && node.ott_id === id) return node;
+    if (!node.children) return null;
+    for (var j = 0; j < node.children.length; j++) {
+      var r = findById(node.children[j], id);
+      if (r) return r;
+    }
+    return null;
+  }
+
+  guesses.forEach(function(g) {
+    var attachId = g.fullIdx >= 0 ? Number(g.mrcaNode.ott_id) : Number(root.ott_id);
+    var attach   = findById(root, attachId) || root;
+    var leaf     = { kind:'guess', data:g };
+    // Insert before target so ??? always stays at bottom
+    var ti = attach.children.findIndex(function(c){ return c.kind === 'target'; });
+    if (ti >= 0) attach.children.splice(ti, 0, leaf);
+    else         attach.children.push(leaf);
+  });
+
+  return root;
+}
+
+// ── Layout: assign x,y to every node ────────────────────────────────
+// Clade nodes: X = evenly-spaced columns sorted by fullIdx (each internal
+//   node gets its own column so ranks stay visually distinct).
+// Guess leaves: X = parent_clade.x + LEAF_OFFSET  (deeper MRCA → further right)
+// Target leaf:  X = deepest-clade.x + LEAF_OFFSET + TARGET_EXTRA
+// Y: equal leaf spacing; internal node Y = midpoint of its subtree's leaf Y range.
+// ====================================================================
+// IMAGE-AWARE LAYOUT + DRAW
+// ====================================================================
+
+// ── Constants ────────────────────────────────────────────────────────
+var IMG_PANEL_W  = 340;   // px width of image bubble
+var IMG_PANEL_H  = 100;   // px height of image bubble (images are 80×68)
+var IMG_SLOT_H   = IMG_PANEL_H + 18;  // vertical space reserved per expanded node
+var IMG_THUMB_W  = 74;
+var IMG_THUMB_H  = 68;
+var IMG_GAP      = 6;
+
+function layoutTree(root) {
+  var LEAF_OFFSET  = 100;
+  var TARGET_EXTRA = 70;
+  var LEFT_PAD     = 30;
+  var COL_W        = 110;
+  var LEAF_H       = 72;
+  var TOP_PAD      = 32;
+
+  // Collect + sort clade nodes
+  var cladeList = [];
+  function collectClades(node) {
+    if (node.kind === 'clade') { cladeList.push(node); (node.children||[]).forEach(collectClades); }
+  }
+  collectClades(root);
+  var seenC = new Set();
+  cladeList = cladeList.filter(function(n){
+    if (seenC.has(n.ott_id)) return false; seenC.add(n.ott_id); return true;
+  });
+  cladeList.sort(function(a,b){ return a.fullIdx - b.fullIdx; });
+
+  // Assign column X
+  var cladeXMap = new Map();
+  cladeList.forEach(function(n,i){
+    var cx = LEFT_PAD + 130 + i * COL_W;
+    cladeXMap.set(n.ott_id, cx); n.x = cx;
+  });
+  var deepestCladeX = cladeList.length ? cladeList[cladeList.length-1].x : LEFT_PAD+130;
+
+  // Assign X recursively
+  function assignX(node, parentX) {
+    if (node.kind === 'guess')  { node.x = parentX + LEAF_OFFSET; }
+    else if (node.kind === 'target') { node.x = parentX + LEAF_OFFSET + TARGET_EXTRA; }
+    else if (node.kind === 'clade') {
+      node.x = cladeXMap.get(node.ott_id) || parentX;
+      (node.children||[]).forEach(function(c){ assignX(c, node.x); });
+    }
+  }
+  assignX(root, root.x || LEFT_PAD+130);
+
+  // Sort children: guesses first, clades middle, target last
+  function sortKids(node) {
+    if (!node.children) return;
+    node.children.sort(function(a,b){
+      var r={guess:0,clade:1,target:2};
+      return (r[a.kind]||1)-(r[b.kind]||1);
+    });
+    node.children.forEach(function(c){ if(c.kind==='clade') sortKids(c); });
+  }
+  sortKids(root);
+
+  // Y assignment — each leaf gets LEAF_H, expanded nodes inject IMG_SLOT_H
+  var leafN = {n:0};
+  function yOffset() { return TOP_PAD + leafN.n * LEAF_H; }
+
+  function assignY(node) {
+    if (node.kind === 'guess' || node.kind === 'target') {
+      node.y = yOffset(); leafN.n++; return;
+    }
+    // Process children first
+    node.children.forEach(assignY);
+
+    // If expanded: reserve a slot for the image panel after children
+    node.imgPanelY = null;
+    if (node.kind === 'clade' && nodeExpanded[node.ott_id]) {
+      node.imgPanelY = yOffset() + 4;        // 4px gap from last child
+      leafN.n += Math.ceil(IMG_SLOT_H / LEAF_H);
+    }
+
+    // Node Y = midpoint of all leaf Ys in subtree (+ imgPanelY if expanded)
+    var ys = getYs(node);
+    if (node.imgPanelY !== null) ys.push(node.imgPanelY + IMG_SLOT_H*0.5);
+    node.y = ys.length ? (Math.min.apply(null,ys)+Math.max.apply(null,ys))/2 : TOP_PAD;
+  }
+
+  function getYs(node) {
+    if (node.kind==='guess'||node.kind==='target') return [node.y];
+    var a=[]; (node.children||[]).forEach(function(c){ a=a.concat(getYs(c)); }); return a;
+  }
+
+  assignY(root);
+
+  var totalH    = TOP_PAD + leafN.n * LEAF_H + 40;
+  var targetX   = deepestCladeX + LEAF_OFFSET + TARGET_EXTRA;
+  var contentW  = Math.max(targetX + 260, deepestCladeX + IMG_PANEL_W + 20);
+
+  return { contentW:contentW, contentH:totalH, cladeList:cladeList, LEAF_H:LEAF_H };
+}
+
+// ── Toggle expand/collapse ────────────────────────────────────────────
+function toggleExpansion(ottId) {
+  var k = Number(ottId);
+  nodeExpanded[k] = !nodeExpanded[k];
+  drawTree();
+  if (nodeExpanded[k]) fitTree();
+}
+
+function drawTree() {
+  var svg = document.getElementById('tree-svg');
+  svg.innerHTML = '';
+  if (!targetFullLineage || targetFullLineage.length === 0) return;
+
+  var maxFi = Math.max(targetFullLineage.length - 1, 1);
+  var tree  = buildGameTree();
+  if (!tree) return;
+
+  var L = layoutTree(tree);
+  treeContentSize = { w: L.contentW, h: L.contentH };
+
+  var g = svgN('g'); g.id = 'tree-g';
+
+  // ── Helpers ──────────────────────────────────────────────────────────
+  function bez(x1,y1,x2,y2,col,dashed,w,da) {
+    var p = svgN('path');
+    var cpx = x1+(x2-x1)*0.55;
+    p.setAttribute('d','M'+x1.toFixed(1)+','+y1.toFixed(1)+
+      ' C'+cpx.toFixed(1)+','+y1.toFixed(1)+
+      ' '+cpx.toFixed(1)+','+y2.toFixed(1)+
+      ' '+x2.toFixed(1)+','+y2.toFixed(1));
+    p.setAttribute('fill','none');
+    p.setAttribute('stroke',col||'#1a4a2e');
+    p.setAttribute('stroke-width',(w||1.7).toString());
+    if (dashed) p.setAttribute('stroke-dasharray',da||'6,4');
+    g.appendChild(p);
+  }
+
+  function mkTxt(x,y,str,at) {
+    var t = svgN('text');
+    t.setAttribute('x',x.toFixed(1)); t.setAttribute('y',y.toFixed(1));
+    Object.keys(at||{}).forEach(function(k){ t.setAttribute(k,at[k]); });
+    t.textContent = str; g.appendChild(t); return t;
+  }
+
+  function mkRect(x,y,w,h,attrs) {
+    var r = svgN('rect');
+    r.setAttribute('x',x.toFixed(1)); r.setAttribute('y',y.toFixed(1));
+    r.setAttribute('width',w.toFixed(1)); r.setAttribute('height',h.toFixed(1));
+    Object.keys(attrs||{}).forEach(function(k){ r.setAttribute(k,attrs[k]); });
+    g.appendChild(r); return r;
+  }
+
+  function bgRect(x,y,w,h) {
+    mkRect(x,y,w,h,{fill:'#fdfaf3',rx:'2',opacity:'0.93'});
+  }
+
+  // ── Column guide lines + header labels ───────────────────────────────
+  L.cladeList.forEach(function(n) {
+    var gl = svgN('line');
+    gl.setAttribute('x1',n.x.toFixed(1)); gl.setAttribute('y1','20');
+    gl.setAttribute('x2',n.x.toFixed(1)); gl.setAttribute('y2',L.contentH.toFixed(1));
+    gl.setAttribute('stroke','#ede5d0'); gl.setAttribute('stroke-width','1');
+    gl.setAttribute('stroke-dasharray','2,6');
+    g.appendChild(gl);
+    var lbl=(n.rank&&n.rank!=='no rank')?rankLabel(n.rank).toUpperCase():'CLADE';
+    mkTxt(n.x,14,lbl,{'text-anchor':'middle','font-family':'Courier Prime,monospace',
+      'font-size':'7.5','fill':'#c0b090'});
+  });
+
+  // ── Image panel renderer ─────────────────────────────────────────────
+  function renderImagePanel(node) {
+    var px = node.x - 10;
+    var py = node.imgPanelY;
+    var pw = IMG_PANEL_W;
+    var ph = IMG_SLOT_H - 4;
+
+    // Panel shadow/border
+    mkRect(px+2, py+2, pw, ph, {fill:'rgba(0,0,0,0.06)',rx:'5'});
+    mkRect(px, py, pw, ph, {fill:'#fdf8ee',rx:'5',stroke:'#c8b88a','stroke-width':'1'});
+
+    // Connecting line from node to panel
+    var cl = svgN('line');
+    cl.setAttribute('x1',node.x.toFixed(1)); cl.setAttribute('y1',node.y.toFixed(1));
+    cl.setAttribute('x2',node.x.toFixed(1)); cl.setAttribute('y2',py.toFixed(1));
+    cl.setAttribute('stroke','#c8b88a'); cl.setAttribute('stroke-width','1');
+    cl.setAttribute('stroke-dasharray','2,3');
+    g.appendChild(cl);
+
+    // Panel title
+    var cn = node.commonName || ozCachedName(node.ott_id);
+    var title = cn ? cn : (node.name||'');
+    if (title.length > 28) title = title.slice(0,27)+'\u2026';
+    mkTxt(px+8, py+13, title, {'font-family':'EB Garamond,serif','font-size':'11',
+      'font-style':'italic','fill':'#2a1a00','font-weight':'bold'});
+
+    // Close / collapse button [−] at top-right of panel
+    var bx=px+pw-20, by=py+4;
+    mkRect(bx,by,16,14,{fill:'#e8deca',rx:'3',cursor:'pointer'});
+    var cBtn = mkTxt(bx+8,by+11,'−',{'text-anchor':'middle',
+      'font-family':'Courier Prime,monospace','font-size':'12','fill':'#5a4a2a',
+      cursor:'pointer'});
+    // Invisible wider hit target
+    var hitR = svgN('rect');
+    hitR.setAttribute('x',bx.toFixed(1)); hitR.setAttribute('y',by.toFixed(1));
+    hitR.setAttribute('width','16'); hitR.setAttribute('height','14');
+    hitR.setAttribute('fill','transparent'); hitR.setAttribute('cursor','pointer');
+    hitR.setAttribute('data-expand-ott', String(node.ott_id));
+    hitR.addEventListener('click', function(e){ e.stopPropagation(); toggleExpansion(node.ott_id); });
+    g.appendChild(hitR);
+
+    // Divider
+    var div = svgN('line');
+    div.setAttribute('x1',(px+4).toFixed(1)); div.setAttribute('y1',(py+18).toFixed(1));
+    div.setAttribute('x2',(px+pw-4).toFixed(1)); div.setAttribute('y2',(py+18).toFixed(1));
+    div.setAttribute('stroke','#d8c8a8'); div.setAttribute('stroke-width','0.8');
+    g.appendChild(div);
+
+    // Images
+    var imgs = getRepImages(node, 4);
+    if (imgs.length === 0) {
+      mkTxt(px+pw/2, py+ph*0.6, 'No images cached yet', {'text-anchor':'middle',
+        'font-family':'Courier Prime,monospace','font-size':'10','fill':'#9a8a6a',
+        'font-style':'italic'});
+    } else {
+      var totalImgW = imgs.length * IMG_THUMB_W + (imgs.length-1) * IMG_GAP;
+      var imgStartX = px + (pw - totalImgW)/2;
+      var imgY = py + 22;
+      imgs.forEach(function(img, idx) {
+        var ix = imgStartX + idx*(IMG_THUMB_W+IMG_GAP);
+        // Image placeholder rect (shows if image fails to load)
+        mkRect(ix, imgY, IMG_THUMB_W, IMG_THUMB_H, {fill:'#ede5d0',rx:'2'});
+        // Actual image element
+        var imgEl = document.createElementNS('http://www.w3.org/2000/svg','image');
+        imgEl.setAttribute('href', img.url);
+        imgEl.setAttribute('x', ix.toFixed(1));
+        imgEl.setAttribute('y', imgY.toFixed(1));
+        imgEl.setAttribute('width', IMG_THUMB_W.toFixed(1));
+        imgEl.setAttribute('height', IMG_THUMB_H.toFixed(1));
+        imgEl.setAttribute('preserveAspectRatio','xMidYMid slice');
+        imgEl.setAttribute('clip-path','inset(0 round 2px)');
+        // Species label below image
+        var lbl = (img.label||'').split(' ');
+        var abbr = lbl.length>=2 ? lbl[0][0]+'. '+lbl.slice(1).join(' ') : (img.label||'');
+        if (abbr.length>12) abbr=abbr.slice(0,11)+'\u2026';
+        g.appendChild(imgEl);
+        mkTxt(ix+IMG_THUMB_W/2, imgY+IMG_THUMB_H+10, abbr, {
+          'text-anchor':'middle','font-family':'Courier Prime,monospace',
+          'font-size':'7.5','fill':'#5a4a2a','font-style':'italic'
+        });
+      });
+    }
+  }
+
+  // ── Recursive render ─────────────────────────────────────────────────
+  function render(node, parent) {
+    if (!node) return;
+
+    if (parent) {
+      var isT=(node.kind==='target'), isG=(node.kind==='guess');
+      var ecol,ew,edash,eda;
+      if (isT)      { ecol='#c4893a'; ew=2.4; edash=true; eda='9,5'; }
+      else if (isG) { ecol=heatColor(node.data.fullIdx>=0?node.data.fullIdx/maxFi:0); ew=1.5; edash=false; }
+      else          { ecol='#1a4a2e'; ew=2.0; edash=false; }
+      bez(parent.x,parent.y,node.x,node.y,ecol,edash,ew,eda);
+    }
+
+    if (node.kind==='clade') {
+      var isRoot=!parent, dotR=isRoot?8:6;
+      var fill=node.hinted?'#c4a35a':'#1a4a2e';
+      var nx=node.x, ny=node.y;
+      var expanded = !!nodeExpanded[node.ott_id];
+
+      // Node circle
+      var circ=svgN('circle');
+      circ.setAttribute('cx',nx.toFixed(1)); circ.setAttribute('cy',ny.toFixed(1));
+      circ.setAttribute('r',dotR.toString()); circ.setAttribute('fill',fill);
+      g.appendChild(circ);
+
+      // Labels (with backing rect)
+      var sci=(node.name||''); if(sci.length>18) sci=sci.slice(0,17)+'\u2026';
+      var cn=node.commonName||ozCachedName(node.ott_id);
+      var cnS=cn?(cn.length>16?cn.slice(0,15)+'\u2026':cn):null;
+      var rkStr=(node.rank||'').replace('no rank','clade').toUpperCase();
+      var lx=nx-dotR-9;
+      var bW=Math.max(sci.length*6.8, cnS?(cnS.length+2)*5.8:0, rkStr.length*5)+12;
+      var bH=cnS?40:26;
+      bgRect(lx-bW, ny-(rkStr?bH/2+6:bH/2), bW, bH+(rkStr?12:0));
+      if (rkStr) mkTxt(lx,ny-dotR-5,rkStr,{'text-anchor':'end',
+        'font-family':'Courier Prime,monospace','font-size':'7.5','fill':'#9a8a6a'});
+      mkTxt(lx,ny+(cnS?-4:4),sci,{'text-anchor':'end','font-family':'EB Garamond,serif',
+        'font-size':isRoot?'13':'11.5','font-style':'italic',
+        'font-weight':isRoot?'bold':'normal','fill':isRoot?'#1a4a2e':'#2a1a00'});
+      if (cnS) mkTxt(lx,ny+9,'('+cnS+')',{'text-anchor':'end',
+        'font-family':'Courier Prime,monospace','font-size':'9','fill':'#7a6a4a'});
+
+      // Expand/collapse toggle button [+] / [−]
+      var hasImgs = (getRepImages(node,1).length > 0) || !expanded;
+      if (hasImgs || expanded) {
+        var bx=nx+dotR+3, by=ny-dotR-3;
+        var btnR=mkRect(bx,by,16,14,{
+          rx:'2', fill: expanded?'#1a4a2e':'#e8deca', cursor:'pointer'
+        });
+        var btnT=mkTxt(bx+8,by+10.5, expanded?'\u2212':'+', {
+          'text-anchor':'middle','font-family':'Courier Prime,monospace',
+          'font-size':'11','fill':expanded?'white':'#5a4a2a','font-weight':'bold',
+          cursor:'pointer'
+        });
+        // Transparent hit area
+        var hit=svgN('rect');
+        hit.setAttribute('x',bx.toFixed(1)); hit.setAttribute('y',by.toFixed(1));
+        hit.setAttribute('width','16'); hit.setAttribute('height','14');
+        hit.setAttribute('fill','transparent'); hit.setAttribute('cursor','pointer');
+        hit.setAttribute('data-expand-ott', String(node.ott_id));
+        hit.addEventListener('click',function(e){ e.stopPropagation(); toggleExpansion(node.ott_id); });
+        g.appendChild(hit);
+      }
+
+      // Image panel (if expanded)
+      if (expanded && node.imgPanelY !== null) {
+        renderImagePanel(node);
+      }
+
+      node.children.forEach(function(c){ render(c,node); });
+
+    } else if (node.kind==='guess') {
+      var g2=node.data, ratio=g2.fullIdx>=0?g2.fullIdx/maxFi:0;
+      var gcol=heatColor(ratio), gnum=guesses.indexOf(g2)+1;
+      var gx=node.x, gy=node.y;
+
+      var gc=svgN('circle');
+      gc.setAttribute('cx',gx.toFixed(1)); gc.setAttribute('cy',gy.toFixed(1));
+      gc.setAttribute('r','5'); gc.setAttribute('fill',gcol);
+      gc.setAttribute('stroke','white'); gc.setAttribute('stroke-width','1.2');
+      g.appendChild(gc);
+
+      mkTxt(gx,gy-9,'#'+gnum,{'text-anchor':'middle','font-family':'Courier Prime,monospace',
+        'font-size':'7','fill':gcol,'font-weight':'bold'});
+
+      var pts=(g2.species_name||'').split(' ');
+      var abbr=pts.length>=2?pts[0][0]+'. '+pts.slice(1).join(' '):(g2.species_name||'');
+      var gcn=g2.commonName||ozCachedName(Number(g2.ott_id));
+      var gcnS=gcn?(gcn.length>20?gcn.slice(0,19)+'\u2026':gcn):null;
+      var gW=Math.max(abbr.length*6.2, gcnS?(gcnS.length+2)*5.6:0)+14;
+      bgRect(gx+8, gy-(gcnS?16:9), gW, gcnS?26:15);
+      mkTxt(gx+10,gy+(gcnS?-4:4),abbr,{'font-family':'Courier Prime,monospace',
+        'font-size':'10','font-style':'italic','fill':'#3a2a0a'});
+      if (gcnS) mkTxt(gx+10,gy+9,'('+gcnS+')',{'font-family':'Courier Prime,monospace',
+        'font-size':'8.5','fill':'#7a5a3a'});
+
+    } else if (node.kind==='target') {
+      var ttx=node.x, tty=node.y;
+      var tcirc=svgN('circle');
+      tcirc.setAttribute('cx',ttx.toFixed(1)); tcirc.setAttribute('cy',tty.toFixed(1));
+      tcirc.setAttribute('r','11'); tcirc.setAttribute('fill','#fffaee');
+      tcirc.setAttribute('stroke','#c4893a'); tcirc.setAttribute('stroke-width','2.8');
+      tcirc.setAttribute('stroke-dasharray','5,3.5');
+      g.appendChild(tcirc);
+      mkTxt(ttx,tty+4,'?',{'text-anchor':'middle','font-family':'Courier Prime,monospace',
+        'font-size':'12','font-weight':'bold','fill':'#c4893a'});
+      bgRect(ttx+14,tty-12,46,18);
+      mkTxt(ttx+16,tty+4,'???',{'font-family':'Courier Prime,monospace',
+        'font-size':'12','font-style':'italic','font-weight':'bold','fill':'#c4893a'});
+    }
+  }
+
+  render(tree,null);
+  svg.appendChild(g);
+  if (guesses.length<=1) fitTree();
+}
+
+
+var resizeT;
+window.addEventListener('resize', function() {
+  clearTimeout(resizeT);
+  resizeT = setTimeout(function() { drawTree(); }, 150);
+});
+
+// ---- Close dropdown on outside click ----
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.search-wrapper')) {
+    document.getElementById('s-drop').classList.remove('open');
+    document.getElementById('ts-drop').classList.remove('open');
+    document.getElementById('rn-drop').classList.remove('open');
+  }
+});
+</script>
+</body>
+</html>
