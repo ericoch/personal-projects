@@ -2373,296 +2373,218 @@ function drawTree() {
 
   var g = svgN('g'); g.id = 'tree-g';
 
-  // ── Helpers ──────────────────────────────────────────────────────────
-  function bez(x1,y1,x2,y2,col,dashed,w,da) {
-    var p = svgN('path');
-    var cpx = x1+(x2-x1)*0.55;
-    p.setAttribute('d','M'+x1.toFixed(1)+','+y1.toFixed(1)+
-      ' C'+cpx.toFixed(1)+','+y1.toFixed(1)+
-      ' '+cpx.toFixed(1)+','+y2.toFixed(1)+
-      ' '+x2.toFixed(1)+','+y2.toFixed(1));
-    p.setAttribute('fill','none');
-    p.setAttribute('stroke',col||'#1a4a2e');
-    p.setAttribute('stroke-width',(w||1.7).toString());
-    if (dashed) p.setAttribute('stroke-dasharray',da||'6,4');
-    g.appendChild(p);
-  }
-
-  function mkTxt(x,y,str,at) {
+  // ── Text helper ──────────────────────────────────────────────────────────
+  function mkTxt(x, y, str, at) {
     var t = svgN('text');
-    t.setAttribute('x',x.toFixed(1)); t.setAttribute('y',y.toFixed(1));
-    Object.keys(at||{}).forEach(function(k){ t.setAttribute(k,at[k]); });
+    t.setAttribute('x', x.toFixed(1)); t.setAttribute('y', y.toFixed(1));
+    Object.keys(at||{}).forEach(function(k){ t.setAttribute(k, at[k]); });
     t.textContent = str; g.appendChild(t); return t;
   }
-
-  function mkRect(x,y,w,h,attrs) {
+  function mkRect(x, y, w, h, at) {
     var r = svgN('rect');
-    r.setAttribute('x',x.toFixed(1)); r.setAttribute('y',y.toFixed(1));
-    r.setAttribute('width',w.toFixed(1)); r.setAttribute('height',h.toFixed(1));
-    Object.keys(attrs||{}).forEach(function(k){ r.setAttribute(k,attrs[k]); });
+    r.setAttribute('x', x.toFixed(1)); r.setAttribute('y', y.toFixed(1));
+    r.setAttribute('width', w.toFixed(1)); r.setAttribute('height', h.toFixed(1));
+    Object.keys(at||{}).forEach(function(k){ r.setAttribute(k, at[k]); });
     g.appendChild(r); return r;
   }
-
-  function bgRect(x,y,w,h) {
-    mkRect(x,y,w,h,{fill:'#fdfaf3',rx:'2',opacity:'0.93'});
+  function bgRect(x, y, w, h) {
+    mkRect(x, y, w, h, {fill:'#fdfaf3', rx:'2', opacity:'0.93'});
   }
 
-  // ── Column guide lines + header labels ───────────────────────────────
+  // ── Column guide lines + headers ─────────────────────────────────────────
   L.cladeList.forEach(function(n) {
     var gl = svgN('line');
-    gl.setAttribute('x1',n.x.toFixed(1)); gl.setAttribute('y1','20');
-    gl.setAttribute('x2',n.x.toFixed(1)); gl.setAttribute('y2',L.contentH.toFixed(1));
-    gl.setAttribute('stroke','#ede5d0'); gl.setAttribute('stroke-width','1');
-    gl.setAttribute('stroke-dasharray','2,6');
+    gl.setAttribute('x1', n.x.toFixed(1)); gl.setAttribute('y1', '20');
+    gl.setAttribute('x2', n.x.toFixed(1)); gl.setAttribute('y2', L.contentH.toFixed(1));
+    gl.setAttribute('stroke', '#ede5d0'); gl.setAttribute('stroke-width', '1');
+    gl.setAttribute('stroke-dasharray', '2,6');
     g.appendChild(gl);
-    var lbl=(n.rank&&n.rank!=='no rank')?rankLabel(n.rank).toUpperCase():'CLADE';
-    mkTxt(n.x,14,lbl,{'text-anchor':'middle','font-family':'Courier Prime,monospace',
-      'font-size':'7.5','fill':'#c0b090'});
+    var lbl = (n.rank && n.rank !== 'no rank') ? rankLabel(n.rank).toUpperCase() : 'CLADE';
+    mkTxt(n.x, 14, lbl, {'text-anchor':'middle', 'font-family':'Courier Prime,monospace',
+      'font-size':'7.5', 'fill':'#c0b090'});
   });
 
-  // ── Image panel renderer ─────────────────────────────────────────────
-  function renderImagePanel(node) {
-    var px = node.x - 10;
-    var py = node.imgPanelY;
-    var pw = IMG_PANEL_W;
-    var ph = IMG_SLOT_H - 4;
+  // ── Rectangular cladogram rendering ──────────────────────────────────────
+  // Each clade node draws:
+  //   1. A vertical SPINE connecting all its children
+  //   2. A horizontal ARM from the spine to each child
+  // This guarantees zero crossings regardless of how many branches there are.
 
-    // Panel shadow/border
-    mkRect(px+2, py+2, pw, ph, {fill:'rgba(0,0,0,0.06)',rx:'5'});
-    mkRect(px, py, pw, ph, {fill:'#fdf8ee',rx:'5',stroke:'#c8b88a','stroke-width':'1'});
-
-    // Connecting line from node to panel
-    var cl = svgN('line');
-    cl.setAttribute('x1',node.x.toFixed(1)); cl.setAttribute('y1',node.y.toFixed(1));
-    cl.setAttribute('x2',node.x.toFixed(1)); cl.setAttribute('y2',py.toFixed(1));
-    cl.setAttribute('stroke','#c8b88a'); cl.setAttribute('stroke-width','1');
-    cl.setAttribute('stroke-dasharray','2,3');
-    g.appendChild(cl);
-
-    // Panel title
-    var cn = node.commonName || ozCachedName(node.ott_id);
-    var title = cn ? cn : (node.name||'');
-    if (title.length > 28) title = title.slice(0,27)+'\u2026';
-    mkTxt(px+8, py+13, title, {'font-family':'EB Garamond,serif','font-size':'11',
-      'font-style':'italic','fill':'#2a1a00','font-weight':'bold'});
-
-    // Close / collapse button [−] at top-right of panel
-    var bx=px+pw-20, by=py+4;
-    mkRect(bx,by,16,14,{fill:'#e8deca',rx:'3',cursor:'pointer'});
-    var cBtn = mkTxt(bx+8,by+11,'−',{'text-anchor':'middle',
-      'font-family':'Courier Prime,monospace','font-size':'12','fill':'#5a4a2a',
-      cursor:'pointer'});
-    // Invisible wider hit target
-    var hitR = svgN('rect');
-    hitR.setAttribute('x',bx.toFixed(1)); hitR.setAttribute('y',by.toFixed(1));
-    hitR.setAttribute('width','16'); hitR.setAttribute('height','14');
-    hitR.setAttribute('fill','transparent'); hitR.setAttribute('cursor','pointer');
-    hitR.setAttribute('data-expand-ott', String(node.ott_id));
-    hitR.addEventListener('click', function(e){ e.stopPropagation(); toggleExpansion(node.ott_id); });
-    g.appendChild(hitR);
-
-    // Divider
-    var div = svgN('line');
-    div.setAttribute('x1',(px+4).toFixed(1)); div.setAttribute('y1',(py+18).toFixed(1));
-    div.setAttribute('x2',(px+pw-4).toFixed(1)); div.setAttribute('y2',(py+18).toFixed(1));
-    div.setAttribute('stroke','#d8c8a8'); div.setAttribute('stroke-width','0.8');
-    g.appendChild(div);
-
-    // Images
-    var imgs = getRepImages(node, 4);
-    if (imgs.length === 0) {
-      mkTxt(px+pw/2, py+ph*0.6, 'No images cached yet', {'text-anchor':'middle',
-        'font-family':'Courier Prime,monospace','font-size':'10','fill':'#9a8a6a',
-        'font-style':'italic'});
-    } else {
-      var totalImgW = imgs.length * IMG_THUMB_W + (imgs.length-1) * IMG_GAP;
-      var imgStartX = px + (pw - totalImgW)/2;
-      var imgY = py + 22;
-      imgs.forEach(function(img, idx) {
-        var ix = imgStartX + idx*(IMG_THUMB_W+IMG_GAP);
-        // Image placeholder rect (shows if image fails to load)
-        mkRect(ix, imgY, IMG_THUMB_W, IMG_THUMB_H, {fill:'#ede5d0',rx:'2'});
-        // Actual image element
-        var imgEl = document.createElementNS('http://www.w3.org/2000/svg','image');
-        imgEl.setAttribute('href', img.url);
-        imgEl.setAttribute('x', ix.toFixed(1));
-        imgEl.setAttribute('y', imgY.toFixed(1));
-        imgEl.setAttribute('width', IMG_THUMB_W.toFixed(1));
-        imgEl.setAttribute('height', IMG_THUMB_H.toFixed(1));
-        imgEl.setAttribute('preserveAspectRatio','xMidYMid slice');
-        imgEl.setAttribute('clip-path','inset(0 round 2px)');
-        // Species label below image
-        var lbl = (img.label||'').split(' ');
-        var abbr = lbl.length>=2 ? lbl[0][0]+'. '+lbl.slice(1).join(' ') : (img.label||'');
-        if (abbr.length>12) abbr=abbr.slice(0,11)+'\u2026';
-        g.appendChild(imgEl);
-        mkTxt(ix+IMG_THUMB_W/2, imgY+IMG_THUMB_H+10, abbr, {
-          'text-anchor':'middle','font-family':'Courier Prime,monospace',
-          'font-size':'7.5','fill':'#5a4a2a','font-style':'italic'
-        });
-      });
-    }
-  }
-
-  // ── Recursive render ─────────────────────────────────────────────────
   function render(node, parent) {
     if (!node) return;
 
-    if (parent) {
-      var isT=(node.kind==='target'), isG=(node.kind==='guess');
-      var ecol,ew,edash,eda;
-      if (isT)      { ecol='#c4893a'; ew=2.4; edash=true; eda='9,5'; }
-      else if (isG) { ecol=heatColor(node.data.fullIdx>=0?node.data.fullIdx/maxFi:0); ew=1.5; edash=false; }
-      else          { ecol='#1a4a2e'; ew=2.0; edash=false; }
-      bez(parent.x,parent.y,node.x,node.y,ecol,edash,ew,eda);
-    }
-
-    if (node.kind==='clade') {
-      var isRoot=!parent, dotR=isRoot?8:6;
-      var fill=node.hinted?'#c4a35a':'#1a4a2e';
-      var nx=node.x, ny=node.y;
+    if (node.kind === 'clade') {
+      var nx = node.x, ny = node.y;
+      var isRoot  = !parent;
+      var dotR    = isRoot ? 8 : 6;
+      var dotFill = node.hinted ? '#c4a35a' : '#1a4a2e';
       var expanded = !!nodeExpanded[node.ott_id];
 
-      // Node circle
-      var circ=svgN('circle');
-      circ.setAttribute('cx',nx.toFixed(1)); circ.setAttribute('cy',ny.toFixed(1));
-      circ.setAttribute('r',dotR.toString()); circ.setAttribute('fill',fill);
+      // ── 1. Vertical spine + horizontal arms to children ───────────────
+      if (node.children.length > 0) {
+        var childYs = node.children.map(function(c){ return c.y; });
+        var spineTop = Math.min.apply(null, childYs);
+        var spineBot = Math.max.apply(null, childYs);
+
+        // Vertical spine
+        var vl = svgN('line');
+        vl.setAttribute('x1', nx.toFixed(1)); vl.setAttribute('y1', spineTop.toFixed(1));
+        vl.setAttribute('x2', nx.toFixed(1)); vl.setAttribute('y2', spineBot.toFixed(1));
+        vl.setAttribute('stroke', '#1a4a2e'); vl.setAttribute('stroke-width', '1.7');
+        g.appendChild(vl);
+
+        // Horizontal arm from spine to each child
+        node.children.forEach(function(child) {
+          var ecol, ew, edash, eda;
+          if (child.kind === 'target') {
+            ecol = '#c4893a'; ew = 2.4; edash = true; eda = '9,5';
+          } else if (child.kind === 'guess') {
+            ecol = heatColor(child.data.fullIdx >= 0 ? child.data.fullIdx/maxFi : 0);
+            ew = 1.5; edash = false;
+          } else {
+            ecol = '#1a4a2e'; ew = 1.7; edash = false;
+          }
+          var arm = svgN('path');
+          // Arm: starts at spine x, goes horizontally to child x, at child y
+          arm.setAttribute('d', 'M'+nx.toFixed(1)+','+child.y.toFixed(1)+' H'+child.x.toFixed(1));
+          arm.setAttribute('fill', 'none');
+          arm.setAttribute('stroke', ecol);
+          arm.setAttribute('stroke-width', ew.toString());
+          if (edash) arm.setAttribute('stroke-dasharray', eda);
+          g.appendChild(arm);
+        });
+      }
+
+      // ── 2. Node circle ────────────────────────────────────────────────
+      var circ = svgN('circle');
+      circ.setAttribute('cx', nx.toFixed(1)); circ.setAttribute('cy', ny.toFixed(1));
+      circ.setAttribute('r', dotR.toString()); circ.setAttribute('fill', dotFill);
       g.appendChild(circ);
 
-      // If this clade was itself guessed (higher-taxon guess), show coloured ring + badge
+      // Guess ring badge (if this clade was itself guessed as a higher taxon)
       if (node._guessData) {
         var gd   = node._guessData;
         var gnum = guesses.indexOf(gd) + 1;
         var gCol = heatColor(gd.fullIdx >= 0 ? gd.fullIdx / Math.max(maxFi,1) : 0);
         var ring = svgN('circle');
-        ring.setAttribute('cx',nx.toFixed(1)); ring.setAttribute('cy',ny.toFixed(1));
-        ring.setAttribute('r',(dotR+4).toString());
-        ring.setAttribute('fill','none'); ring.setAttribute('stroke',gCol);
-        ring.setAttribute('stroke-width','2');
+        ring.setAttribute('cx', nx.toFixed(1)); ring.setAttribute('cy', ny.toFixed(1));
+        ring.setAttribute('r', (dotR+4).toString());
+        ring.setAttribute('fill', 'none'); ring.setAttribute('stroke', gCol);
+        ring.setAttribute('stroke-width', '2');
         g.appendChild(ring);
         mkTxt(nx, ny-dotR-10, '#'+gnum, {
-          'text-anchor':'middle','font-family':'Courier Prime,monospace',
-          'font-size':'7','fill':gCol,'font-weight':'bold'
+          'text-anchor':'middle', 'font-family':'Courier Prime,monospace',
+          'font-size':'7', 'fill':gCol, 'font-weight':'bold'
         });
       }
 
-      // Labels (with backing rect)
-      var sci=(node.name||''); if(sci.length>18) sci=sci.slice(0,17)+'\u2026';
-      var cn=node.commonName||ozCachedName(node.ott_id);
-      var cnS=cn?(cn.length>16?cn.slice(0,15)+'\u2026':cn):null;
-      var rkStr=(node.rank||'').replace('no rank','clade').toUpperCase();
-      var lx=nx-dotR-9;
-      var bW=Math.max(sci.length*6.8, cnS?(cnS.length+2)*5.8:0, rkStr.length*5)+12;
-      var bH=cnS?40:26;
-      bgRect(lx-bW, ny-(rkStr?bH/2+6:bH/2), bW, bH+(rkStr?12:0));
-      if (rkStr) mkTxt(lx,ny-dotR-5,rkStr,{'text-anchor':'end',
-        'font-family':'Courier Prime,monospace','font-size':'7.5','fill':'#9a8a6a'});
-      mkTxt(lx,ny+(cnS?-4:4),sci,{'text-anchor':'end','font-family':'EB Garamond,serif',
-        'font-size':isRoot?'13':'11.5','font-style':'italic',
-        'font-weight':isRoot?'bold':'normal','fill':isRoot?'#1a4a2e':'#2a1a00'});
-      if (cnS) mkTxt(lx,ny+9,'('+cnS+')',{'text-anchor':'end',
-        'font-family':'Courier Prime,monospace','font-size':'9','fill':'#7a6a4a'});
+      // ── 3. Labels ─────────────────────────────────────────────────────
+      var sci = (node.name||''); if (sci.length > 18) sci = sci.slice(0,17)+'\u2026';
+      var cn  = node.commonName || ozCachedName(node.ott_id);
+      var cnS = cn ? (cn.length > 16 ? cn.slice(0,15)+'\u2026' : cn) : null;
+      var rkStr = (node.rank||'').replace('no rank','clade').toUpperCase();
+      var lx = nx - dotR - 9;
+      var bW = Math.max(sci.length*6.8, cnS?(cnS.length+2)*5.8:0, rkStr.length*5)+12;
+      var bH = cnS ? 40 : 26;
+      bgRect(lx - bW, ny-(rkStr ? bH/2+6 : bH/2), bW, bH+(rkStr ? 12 : 0));
+      if (rkStr) mkTxt(lx, ny-dotR-5, rkStr, {'text-anchor':'end',
+        'font-family':'Courier Prime,monospace', 'font-size':'7.5', 'fill':'#9a8a6a'});
+      mkTxt(lx, ny+(cnS?-4:4), sci, {'text-anchor':'end', 'font-family':'EB Garamond,serif',
+        'font-size': isRoot?'13':'11.5', 'font-style':'italic',
+        'font-weight': isRoot?'bold':'normal', 'fill': isRoot?'#1a4a2e':'#2a1a00'});
+      if (cnS) mkTxt(lx, ny+9, '('+cnS+')', {'text-anchor':'end',
+        'font-family':'Courier Prime,monospace', 'font-size':'9', 'fill':'#7a6a4a'});
 
-      // Expand/collapse toggle button — thumbnail when collapsed (if image available), − when expanded
+      // ── 4. Expand/collapse toggle ──────────────────────────────────────
       var hasImgs = (getRepImages(node,1).length > 0) || !expanded;
       if (hasImgs || expanded) {
-        var bx=nx+dotR+3, by=ny-dotR-3;
-        var btnW=expanded?16:28, btnH=expanded?14:26;
-
+        var bx = nx+dotR+3, by = ny-dotR-3;
+        var btnW = expanded ? 16 : 28, btnH = expanded ? 14 : 26;
         if (!expanded) {
-          // Show a small representative thumbnail as the button
           var thumbUrl = ozImageUrl(node.ott_id, 64);
-          if (!thumbUrl) {
-            var firstImg = getRepImages(node, 1);
-            thumbUrl = firstImg.length > 0 ? firstImg[0].url : null;
-          }
+          if (!thumbUrl) { var fi2 = getRepImages(node,1); thumbUrl = fi2.length > 0 ? fi2[0].url : null; }
           if (thumbUrl) {
-            // Thumbnail button with image
             mkRect(bx, by, btnW, btnH, {fill:'#e8deca', rx:'3', cursor:'pointer'});
             var tImg = svgN('image');
-            tImg.setAttribute('href', thumbUrl);
-            tImg.setAttribute('x', bx.toFixed(1)); tImg.setAttribute('y', by.toFixed(1));
-            tImg.setAttribute('width', btnW.toFixed(1)); tImg.setAttribute('height', btnH.toFixed(1));
+            tImg.setAttribute('href', thumbUrl); tImg.setAttribute('x', bx.toFixed(1));
+            tImg.setAttribute('y', by.toFixed(1)); tImg.setAttribute('width', btnW.toFixed(1));
+            tImg.setAttribute('height', btnH.toFixed(1));
             tImg.setAttribute('preserveAspectRatio','xMidYMid slice');
-            tImg.setAttribute('clip-path','inset(0 round 3px)');
-            tImg.setAttribute('cursor','pointer');
+            tImg.setAttribute('clip-path','inset(0 round 3px)'); tImg.setAttribute('cursor','pointer');
             g.appendChild(tImg);
           } else {
-            // Fallback: plain [+] button
             mkRect(bx, by, 16, 14, {rx:'2', fill:'#e8deca', cursor:'pointer'});
             mkTxt(bx+8, by+10.5, '+', {'text-anchor':'middle',
               'font-family':'Courier Prime,monospace','font-size':'11',
               'fill':'#5a4a2a','font-weight':'bold', cursor:'pointer'});
           }
         } else {
-          // Collapsed — show [−]
           mkRect(bx, by, 16, 14, {rx:'2', fill:'#1a4a2e', cursor:'pointer'});
           mkTxt(bx+8, by+10.5, '\u2212', {'text-anchor':'middle',
             'font-family':'Courier Prime,monospace','font-size':'11',
             'fill':'white','font-weight':'bold', cursor:'pointer'});
         }
-
-        // Transparent hit area (always 28×26 to cover largest button state)
-        var hit=svgN('rect');
-        hit.setAttribute('x',bx.toFixed(1)); hit.setAttribute('y',by.toFixed(1));
-        hit.setAttribute('width',btnW.toFixed(1)); hit.setAttribute('height',btnH.toFixed(1));
-        hit.setAttribute('fill','transparent'); hit.setAttribute('cursor','pointer');
+        var hit = svgN('rect');
+        hit.setAttribute('x', bx.toFixed(1)); hit.setAttribute('y', by.toFixed(1));
+        hit.setAttribute('width', btnW.toFixed(1)); hit.setAttribute('height', btnH.toFixed(1));
+        hit.setAttribute('fill', 'transparent'); hit.setAttribute('cursor', 'pointer');
         hit.setAttribute('data-expand-ott', String(node.ott_id));
-        hit.addEventListener('click',function(e){ e.stopPropagation(); toggleExpansion(node.ott_id); });
+        hit.addEventListener('click', function(e){ e.stopPropagation(); toggleExpansion(node.ott_id); });
         g.appendChild(hit);
       }
 
-      // Image panel (if expanded)
-      if (expanded && node.imgPanelY !== null) {
-        renderImagePanel(node);
-      }
+      // ── 5. Image panel (if expanded) ──────────────────────────────────
+      if (expanded && node.imgPanelY !== null) renderImagePanel(node);
 
-      node.children.forEach(function(c){ render(c,node); });
+      // ── 6. Recurse ────────────────────────────────────────────────────
+      node.children.forEach(function(c){ render(c, node); });
 
-    } else if (node.kind==='guess') {
-      var g2=node.data, ratio=g2.fullIdx>=0?g2.fullIdx/maxFi:0;
-      var gcol=heatColor(ratio), gnum=guesses.indexOf(g2)+1;
-      var gx=node.x, gy=node.y;
+    } else if (node.kind === 'guess') {
+      var g2   = node.data;
+      var ratio = g2.fullIdx >= 0 ? g2.fullIdx/maxFi : 0;
+      var gcol  = heatColor(ratio);
+      var gnum  = guesses.indexOf(g2) + 1;
+      var gx = node.x, gy = node.y;
 
-      var gc=svgN('circle');
-      gc.setAttribute('cx',gx.toFixed(1)); gc.setAttribute('cy',gy.toFixed(1));
-      gc.setAttribute('r','5'); gc.setAttribute('fill',gcol);
-      gc.setAttribute('stroke','white'); gc.setAttribute('stroke-width','1.2');
+      var gc = svgN('circle');
+      gc.setAttribute('cx', gx.toFixed(1)); gc.setAttribute('cy', gy.toFixed(1));
+      gc.setAttribute('r', '5'); gc.setAttribute('fill', gcol);
+      gc.setAttribute('stroke', 'white'); gc.setAttribute('stroke-width', '1.2');
       g.appendChild(gc);
 
-      mkTxt(gx,gy-9,'#'+gnum,{'text-anchor':'middle','font-family':'Courier Prime,monospace',
-        'font-size':'7','fill':gcol,'font-weight':'bold'});
+      mkTxt(gx, gy-9, '#'+gnum, {'text-anchor':'middle',
+        'font-family':'Courier Prime,monospace', 'font-size':'7', 'fill':gcol, 'font-weight':'bold'});
 
-      var pts=(g2.species_name||'').split(' ');
-      var abbr=pts.length>=2?pts[0][0]+'. '+pts.slice(1).join(' '):(g2.species_name||'');
-      var gcn=g2.commonName||ozCachedName(Number(g2.ott_id));
-      var gcnS=gcn?(gcn.length>20?gcn.slice(0,19)+'\u2026':gcn):null;
-      var gW=Math.max(abbr.length*6.2, gcnS?(gcnS.length+2)*5.6:0)+14;
+      var pts  = (g2.species_name||'').split(' ');
+      var abbr = pts.length >= 2 ? pts[0][0]+'. '+pts.slice(1).join(' ') : (g2.species_name||'');
+      var gcn  = g2.commonName || ozCachedName(Number(g2.ott_id));
+      var gcnS = gcn ? (gcn.length > 20 ? gcn.slice(0,19)+'\u2026' : gcn) : null;
+      var gW   = Math.max(abbr.length*6.2, gcnS?(gcnS.length+2)*5.6:0)+14;
       bgRect(gx+8, gy-(gcnS?16:9), gW, gcnS?26:15);
-      mkTxt(gx+10,gy+(gcnS?-4:4),abbr,{'font-family':'Courier Prime,monospace',
-        'font-size':'10','font-style':'italic','fill':'#3a2a0a'});
-      if (gcnS) mkTxt(gx+10,gy+9,'('+gcnS+')',{'font-family':'Courier Prime,monospace',
-        'font-size':'8.5','fill':'#7a5a3a'});
+      mkTxt(gx+10, gy+(gcnS?-4:4), abbr, {'font-family':'Courier Prime,monospace',
+        'font-size':'10', 'font-style':'italic', 'fill':'#3a2a0a'});
+      if (gcnS) mkTxt(gx+10, gy+9, '('+gcnS+')', {'font-family':'Courier Prime,monospace',
+        'font-size':'8.5', 'fill':'#7a5a3a'});
 
-    } else if (node.kind==='target') {
-      var ttx=node.x, tty=node.y;
-      var tcirc=svgN('circle');
-      tcirc.setAttribute('cx',ttx.toFixed(1)); tcirc.setAttribute('cy',tty.toFixed(1));
-      tcirc.setAttribute('r','11'); tcirc.setAttribute('fill','#fffaee');
-      tcirc.setAttribute('stroke','#c4893a'); tcirc.setAttribute('stroke-width','2.8');
-      tcirc.setAttribute('stroke-dasharray','5,3.5');
+    } else if (node.kind === 'target') {
+      var ttx = node.x, tty = node.y;
+      var tcirc = svgN('circle');
+      tcirc.setAttribute('cx', ttx.toFixed(1)); tcirc.setAttribute('cy', tty.toFixed(1));
+      tcirc.setAttribute('r', '11'); tcirc.setAttribute('fill', '#fffaee');
+      tcirc.setAttribute('stroke', '#c4893a'); tcirc.setAttribute('stroke-width', '2.8');
+      tcirc.setAttribute('stroke-dasharray', '5,3.5');
       g.appendChild(tcirc);
-      mkTxt(ttx,tty+4,'?',{'text-anchor':'middle','font-family':'Courier Prime,monospace',
-        'font-size':'12','font-weight':'bold','fill':'#c4893a'});
-      bgRect(ttx+14,tty-12,46,18);
-      mkTxt(ttx+16,tty+4,'???',{'font-family':'Courier Prime,monospace',
-        'font-size':'12','font-style':'italic','font-weight':'bold','fill':'#c4893a'});
+      mkTxt(ttx, tty+4, '?', {'text-anchor':'middle', 'font-family':'Courier Prime,monospace',
+        'font-size':'12', 'font-weight':'bold', 'fill':'#c4893a'});
+      bgRect(ttx+14, tty-12, 46, 18);
+      mkTxt(ttx+16, tty+4, '???', {'font-family':'Courier Prime,monospace',
+        'font-size':'12', 'font-style':'italic', 'font-weight':'bold', 'fill':'#c4893a'});
     }
   }
 
-  render(tree,null);
+  render(tree, null);
   svg.appendChild(g);
-  if (guesses.length<=1) fitTree();
+  if (guesses.length <= 1) fitTree();
 }
 
 
