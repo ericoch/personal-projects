@@ -253,7 +253,7 @@ h1,h2,h3 { font-family: 'Playfair Display', Georgia, serif; }
 .divider { width: 100%; max-width: 560px; border: none; border-top: 1px solid var(--border); margin: 18px 0; }
 /* Tree zoom controls */
 .tree-wrap { position: relative; flex: 1; min-height: 280px; overflow: hidden; }
-#tree-svg { width: 100%; height: 100%; position: absolute; inset: 0; cursor: grab; user-select: none; }
+#tree-svg { width: 100%; height: 100%; position: absolute; inset: 0; cursor: grab; user-select: text; }
 #tree-svg:active { cursor: grabbing; }
 .tree-zoom-ctrls {
   position: absolute; bottom: 10px; right: 10px;
@@ -1958,6 +1958,7 @@ function fitTree() {
 function initTreeInteraction() {
   var svg = document.getElementById('tree-svg');
   var lastPinch = null;
+  var dragThreshold = 4; // px moved before we consider it a drag
 
   svg.addEventListener('wheel', function(e) {
     e.preventDefault();
@@ -1972,18 +1973,27 @@ function initTreeInteraction() {
 
   svg.addEventListener('mousedown', function(e) {
     if (e.button !== 0) return;
-    treeDrag = { sx: e.clientX, sy: e.clientY, tx: treeZoom.x, ty: treeZoom.y };
+    // Record start position but don't commit to drag yet
+    treeDrag = { sx: e.clientX, sy: e.clientY, tx: treeZoom.x, ty: treeZoom.y, dragging: false };
   });
   window.addEventListener('mousemove', function(e) {
     if (!treeDrag) return;
+    var dx = e.clientX - treeDrag.sx, dy = e.clientY - treeDrag.sy;
+    // Only start dragging once the mouse has moved enough (preserves text selection on click)
+    if (!treeDrag.dragging && Math.sqrt(dx*dx + dy*dy) < dragThreshold) return;
+    treeDrag.dragging = true;
+    svg.style.cursor = 'grabbing';
     treeZoom.x = treeDrag.tx + (e.clientX - treeDrag.sx);
     treeZoom.y = treeDrag.ty + (e.clientY - treeDrag.sy);
     applyTreeTransform();
   });
-  window.addEventListener('mouseup', function() { treeDrag = null; });
+  window.addEventListener('mouseup', function() {
+    if (treeDrag) svg.style.cursor = 'grab';
+    treeDrag = null;
+  });
 
   svg.addEventListener('touchstart', function(e) {
-    if (e.touches.length === 1) treeDrag = { sx: e.touches[0].clientX, sy: e.touches[0].clientY, tx: treeZoom.x, ty: treeZoom.y };
+    if (e.touches.length === 1) treeDrag = { sx: e.touches[0].clientX, sy: e.touches[0].clientY, tx: treeZoom.x, ty: treeZoom.y, dragging: false };
     lastPinch = null;
   }, { passive: true });
   svg.addEventListener('touchmove', function(e) {
